@@ -1334,7 +1334,7 @@ const styles = StyleSheet.create({
   saveText: {
     color: "#022C22",
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 14,
     textAlign: "center",
   },
 });
