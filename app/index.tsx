@@ -1,10 +1,10 @@
 // app/(tabs)/index.tsx
+import { getMe } from "@/lib/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,11 +12,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getMe } from "../../lib/api";
 
-// ===== Types =====
 type AvailabilitySlot = {
-  dayOfWeek: number; // 0-6
+  dayOfWeek: number;
   from: string;
   to: string;
 };
@@ -40,14 +38,14 @@ type User = {
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function getInitials(name: string | undefined) {
+function getInitials(name?: string) {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function getLevelFromXp(xp: number | undefined) {
+function getLevelFromXp(xp?: number) {
   const val = xp ?? 0;
   const level = Math.floor(val / 100);
   const progress = val % 100;
@@ -70,13 +68,12 @@ export default function HomeScreen() {
         router.replace("/login" as any);
         return;
       }
-
       const data = await getMe(token);
       setUser(data as User);
     } catch (err: any) {
       console.log("Home / getMe error:", err);
       setErrorText(
-        err?.message || "We couldn’t load your profile. Please pull to refresh."
+        err?.message || "We couldn’t load your profile. Pull to refresh."
       );
     } finally {
       setLoading(false);
@@ -84,9 +81,11 @@ export default function HomeScreen() {
     }
   }, [router]);
 
-  useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+  useFocusEffect(
+    useCallback(() => {
+      loadUser();
+    }, [loadUser])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -98,32 +97,12 @@ export default function HomeScreen() {
     router.replace("/login" as any);
   };
 
-  const handleFindMentor = () => {
-    Alert.alert(
-      "Coming soon",
-      "In the next version you’ll be able to browse mentors that match your learning goals."
-    );
+  const goToManageSkills = () => {
+    router.push("/manage-skills" as any);
   };
 
-  const handleOfferSession = () => {
-    Alert.alert(
-      "Coming soon",
-      "In the next version you’ll be able to offer sessions based on the skills you can teach."
-    );
-  };
-
-  const handleManageSkills = () => {
-    Alert.alert(
-      "Coming soon",
-      "Skills management will be available in the next step of the project."
-    );
-  };
-
-  const handleEditAvailability = () => {
-    Alert.alert(
-      "Coming soon",
-      "Editing your weekly availability will be available soon."
-    );
+  const goToEditAvailability = () => {
+    router.push("/manage-skills" as any); // نفس الشاشة حالياً
   };
 
   if (loading && !user && !errorText) {
@@ -152,7 +131,7 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* ===== Top hero card ===== */}
+        {/* Hero */}
         <View style={styles.heroCard}>
           <View style={styles.heroRow}>
             <View style={{ flex: 1 }}>
@@ -206,7 +185,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ===== Error message if any ===== */}
+        {/* Error */}
         {errorText && (
           <View style={styles.errorBox}>
             <Text style={styles.errorTitle}>We couldn’t refresh your data</Text>
@@ -217,7 +196,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ===== Stats row ===== */}
+        {/* Stats */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>XP</Text>
@@ -236,7 +215,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ===== Quick actions ===== */}
+        {/* Quick actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick actions</Text>
           <Text style={styles.sectionSubtitle}>
@@ -246,33 +225,35 @@ export default function HomeScreen() {
           <View style={styles.quickRow}>
             <TouchableOpacity
               style={[styles.quickCard, styles.quickPrimary]}
-              onPress={handleFindMentor}
+              onPress={goToManageSkills}
             >
-              <Text style={styles.quickEmoji}>🧑‍🏫</Text>
-              <Text style={styles.quickTitle}>Find a mentor</Text>
+              <Text style={styles.quickEmoji}>🎯</Text>
+              <Text style={styles.quickTitle}>Set your learning goals</Text>
               <Text style={styles.quickText}>
-                Discover people who can help you with your learning goals.
+                Choose the skills you want to learn so we can match you with the
+                right people.
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.quickCard, styles.quickSecondary]}
-              onPress={handleOfferSession}
+              onPress={goToManageSkills}
             >
               <Text style={styles.quickEmoji}>🤝</Text>
-              <Text style={styles.quickTitle}>Offer a session</Text>
+              <Text style={styles.quickTitle}>Define what you can teach</Text>
               <Text style={styles.quickText}>
-                Share a skill you’re confident about and help someone else.
+                Add the skills you’re comfortable teaching and start earning
+                points.
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ===== Skills you want to learn ===== */}
+        {/* Skills to learn */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Skills you want to learn</Text>
-            <TouchableOpacity onPress={handleManageSkills}>
+            <TouchableOpacity onPress={goToManageSkills}>
               <Text style={styles.sectionAction}>Manage</Text>
             </TouchableOpacity>
           </View>
@@ -300,11 +281,11 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ===== Skills you can teach ===== */}
+        {/* Skills to teach */}
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Skills you can teach</Text>
-            <TouchableOpacity onPress={handleManageSkills}>
+            <TouchableOpacity onPress={goToManageSkills}>
               <Text style={styles.sectionAction}>Manage</Text>
             </TouchableOpacity>
           </View>
@@ -313,12 +294,10 @@ export default function HomeScreen() {
             <View style={styles.teachList}>
               {user.skillsToTeach.map((skill, idx) => (
                 <View key={`${skill.name}-${idx}`} style={styles.teachCard}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.teachName}>{skill.name}</Text>
-                    <Text style={styles.teachLevel}>
-                      Level: {skill.level || "Not specified"}
-                    </Text>
-                  </View>
+                  <Text style={styles.teachName}>{skill.name}</Text>
+                  <Text style={styles.teachLevel}>
+                    Level: {skill.level || "Not specified"}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -333,11 +312,11 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ===== Availability ===== */}
+        {/* Availability */}
         <View style={styles.section}>
-          <View className="section-header-row" style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Your weekly availability</Text>
-            <TouchableOpacity onPress={handleEditAvailability}>
+            <TouchableOpacity onPress={goToEditAvailability}>
               <Text style={styles.sectionAction}>Edit</Text>
             </TouchableOpacity>
           </View>
@@ -366,9 +345,9 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* ===== Footer ===== */}
+        {/* Footer */}
         <View style={styles.footerRow}>
-          <Text style={styles.footerHint}>Last updated just now</Text>
+          <Text style={styles.footerHint}>Pull down to refresh your data</Text>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutText}>Sign out</Text>
           </TouchableOpacity>
@@ -378,33 +357,19 @@ export default function HomeScreen() {
   );
 }
 
-// ===== Styles =====
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#020617",
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 32,
-  },
+  root: { flex: 1, backgroundColor: "#020617" },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 32 },
+
   loadingScreen: {
     flex: 1,
     backgroundColor: "#020617",
     alignItems: "center",
     justifyContent: "center",
   },
-  loadingText: {
-    marginTop: 12,
-    color: "#9CA3AF",
-    fontSize: 14,
-  },
+  loadingText: { marginTop: 12, color: "#9CA3AF", fontSize: 14 },
 
-  // Hero
   heroCard: {
     backgroundColor: "#020617",
     borderRadius: 18,
@@ -413,26 +378,10 @@ const styles = StyleSheet.create({
     borderColor: "#1E293B",
     marginBottom: 18,
   },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  greeting: {
-    color: "#9CA3AF",
-    fontSize: 13,
-  },
-  name: {
-    color: "#F9FAFB",
-    fontSize: 22,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  tagline: {
-    color: "#64748B",
-    fontSize: 12,
-    marginTop: 6,
-  },
+  heroRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  greeting: { color: "#9CA3AF", fontSize: 13 },
+  name: { color: "#F9FAFB", fontSize: 22, fontWeight: "700", marginTop: 2 },
+  tagline: { color: "#64748B", fontSize: 12, marginTop: 6 },
   avatar: {
     width: 50,
     height: 50,
@@ -444,46 +393,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 12,
   },
-  avatarText: {
-    color: "#F97316",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  heroBottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  levelColumn: {
-    width: 64,
-    alignItems: "flex-start",
-  },
-  levelLabel: {
-    color: "#94A3B8",
-    fontSize: 11,
-  },
+  avatarText: { color: "#F97316", fontSize: 18, fontWeight: "700" },
+  heroBottomRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  levelColumn: { width: 64, alignItems: "flex-start" },
+  levelLabel: { color: "#94A3B8", fontSize: 11 },
   levelValue: {
     color: "#E5E7EB",
     fontSize: 20,
     fontWeight: "700",
     marginTop: 2,
   },
-  progressColumn: {
-    flex: 1,
-    marginHorizontal: 12,
-  },
-  progressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  progressLabel: {
-    color: "#94A3B8",
-    fontSize: 11,
-  },
-  progressValue: {
-    color: "#CBD5F5",
-    fontSize: 11,
-  },
+  progressColumn: { flex: 1, marginHorizontal: 12 },
+  progressHeader: { flexDirection: "row", justifyContent: "space-between" },
+  progressLabel: { color: "#94A3B8", fontSize: 11 },
+  progressValue: { color: "#CBD5F5", fontSize: 11 },
   progressBarBackground: {
     marginTop: 6,
     height: 8,
@@ -491,10 +414,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F172A",
     overflow: "hidden",
   },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: "#F97316",
-  },
+  progressBarFill: { height: "100%", backgroundColor: "#F97316" },
   streakBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -505,16 +425,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  streakEmoji: {
-    marginRight: 4,
-  },
-  streakText: {
-    color: "#FED7AA",
-    fontSize: 11,
-    fontWeight: "600",
-  },
+  streakEmoji: { marginRight: 4 },
+  streakText: { color: "#FED7AA", fontSize: 11, fontWeight: "600" },
 
-  // Error
   errorBox: {
     backgroundColor: "#451A1A",
     borderRadius: 12,
@@ -529,11 +442,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     fontSize: 13,
   },
-  errorBody: {
-    color: "#FECACA",
-    fontSize: 12,
-    marginBottom: 8,
-  },
+  errorBody: { color: "#FECACA", fontSize: 12, marginBottom: 8 },
   retryButton: {
     alignSelf: "flex-start",
     paddingHorizontal: 10,
@@ -541,18 +450,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#B91C1C",
   },
-  retryText: {
-    color: "#FEE2E2",
-    fontSize: 12,
-    fontWeight: "500",
-  },
+  retryText: { color: "#FEE2E2", fontSize: 12, fontWeight: "500" },
 
-  // Stats
-  statsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 18,
-  },
+  statsRow: { flexDirection: "row", gap: 8, marginBottom: 18 },
   statCard: {
     flex: 1,
     backgroundColor: "#020617",
@@ -562,84 +462,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1E293B",
   },
-  statLabel: {
-    color: "#94A3B8",
-    fontSize: 11,
-    marginBottom: 4,
-  },
-  statValue: {
-    color: "#F9FAFB",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  statHint: {
-    color: "#64748B",
-    fontSize: 10,
-    marginTop: 4,
-  },
+  statLabel: { color: "#94A3B8", fontSize: 11, marginBottom: 4 },
+  statValue: { color: "#F9FAFB", fontSize: 18, fontWeight: "700" },
+  statHint: { color: "#64748B", fontSize: 10, marginTop: 4 },
 
-  // Sections
-  section: {
-    marginBottom: 20,
-  },
+  section: { marginBottom: 20 },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 6,
   },
-  sectionTitle: {
-    color: "#F9FAFB",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  sectionSubtitle: {
-    color: "#64748B",
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  sectionAction: {
-    color: "#60A5FA",
-    fontSize: 13,
-    fontWeight: "500",
-  },
+  sectionTitle: { color: "#F9FAFB", fontSize: 16, fontWeight: "600" },
+  sectionSubtitle: { color: "#64748B", fontSize: 12, marginBottom: 8 },
+  sectionAction: { color: "#60A5FA", fontSize: 13, fontWeight: "500" },
 
-  // Quick actions
-  quickRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 6,
-  },
+  quickRow: { flexDirection: "row", gap: 10, marginTop: 6 },
   quickCard: {
     flex: 1,
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
   },
-  quickPrimary: {
-    backgroundColor: "#0F172A",
-    borderColor: "#1D4ED8",
-  },
-  quickSecondary: {
-    backgroundColor: "#020617",
-    borderColor: "#4B5563",
-  },
-  quickEmoji: {
-    fontSize: 20,
-    marginBottom: 6,
-  },
+  quickPrimary: { backgroundColor: "#0F172A", borderColor: "#1D4ED8" },
+  quickSecondary: { backgroundColor: "#020617", borderColor: "#4B5563" },
+  quickEmoji: { fontSize: 20, marginBottom: 6 },
   quickTitle: {
     color: "#F9FAFB",
     fontSize: 14,
     fontWeight: "600",
     marginBottom: 4,
   },
-  quickText: {
-    color: "#9CA3AF",
-    fontSize: 12,
-  },
+  quickText: { color: "#9CA3AF", fontSize: 12 },
 
-  // Chips / lists
   horizontalChips: {
     paddingVertical: 4,
     paddingRight: 4,
@@ -654,10 +509,7 @@ const styles = StyleSheet.create({
     borderColor: "#1E293B",
     marginRight: 8,
   },
-  chipText: {
-    color: "#E5E7EB",
-    fontSize: 12,
-  },
+  chipText: { color: "#E5E7EB", fontSize: 12 },
   emptyCard: {
     backgroundColor: "#020617",
     borderRadius: 14,
@@ -671,14 +523,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 4,
   },
-  emptyText: {
-    color: "#64748B",
-    fontSize: 12,
-  },
+  emptyText: { color: "#64748B", fontSize: 12 },
 
-  teachList: {
-    gap: 8,
-  },
+  teachList: { gap: 8 },
   teachCard: {
     backgroundColor: "#020617",
     borderRadius: 12,
@@ -686,18 +533,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1E293B",
   },
-  teachName: {
-    color: "#F9FAFB",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  teachLevel: {
-    color: "#9CA3AF",
-    fontSize: 12,
-    marginTop: 2,
-  },
+  teachName: { color: "#F9FAFB", fontSize: 14, fontWeight: "600" },
+  teachLevel: { color: "#9CA3AF", fontSize: 12, marginTop: 2 },
 
-  // Availability
   availabilityList: {
     borderRadius: 12,
     borderWidth: 1,
@@ -710,29 +548,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#020617",
   },
-  availabilityDay: {
-    color: "#E5E7EB",
-    fontSize: 13,
-  },
-  availabilityTime: {
-    color: "#9CA3AF",
-    fontSize: 13,
-  },
+  availabilityDay: { color: "#E5E7EB", fontSize: 13 },
+  availabilityTime: { color: "#9CA3AF", fontSize: 13 },
 
-  // Footer
   footerRow: {
     marginTop: 8,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  footerHint: {
-    color: "#6B7280",
-    fontSize: 11,
-  },
+  footerHint: { color: "#6B7280", fontSize: 11 },
   logoutButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -740,8 +566,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#4B5563",
   },
-  logoutText: {
-    color: "#E5E7EB",
-    fontSize: 12,
-  },
+  logoutText: { color: "#E5E7EB", fontSize: 12 },
 });
