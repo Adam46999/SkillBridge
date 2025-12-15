@@ -1,0 +1,109 @@
+Date : 2025-12-10 22:45:17
+Directory : c:\Users\shet_\our-final-app
+Total : 60 files,  21684 codes, 260 comments, 805 blanks, all 22749 lines
+
+Languages
++--------------------+------------+------------+------------+------------+------------+
+| language           | files      | code       | comment    | blank      | total      |
++--------------------+------------+------------+------------+------------+------------+
+| JSON               |          4 |     14,679 |          0 |          4 |     14,683 |
+| TypeScript JSX     |         35 |      5,061 |        117 |        459 |      5,637 |
+| TypeScript         |         12 |      1,288 |         94 |        194 |      1,576 |
+| JavaScript JSX     |          5 |        557 |         49 |        125 |        731 |
+| JSON with Comments |          2 |         65 |          0 |          2 |         67 |
+| Markdown           |          1 |         31 |          0 |         20 |         51 |
+| Dotenv             |          1 |          3 |          0 |          1 |          4 |
++--------------------+------------+------------+------------+------------+------------+
+
+Directories
++---------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                  | files      | code       | comment    | blank      | total      |
++---------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                     |         60 |     21,684 |        260 |        805 |     22,749 |
+| . (Files)                                                                             |          6 |     13,574 |          1 |         26 |     13,601 |
+| app                                                                                   |         33 |      5,833 |        151 |        567 |      6,551 |
+| app (Files)                                                                           |          7 |        907 |         13 |         82 |      1,002 |
+| app\(tabs)                                                                            |          3 |         36 |          0 |          7 |         43 |
+| app\manage-skills-to-learn                                                            |         12 |      2,148 |         57 |        207 |      2,412 |
+| app\manage-skills-to-teach                                                            |          5 |      1,181 |         42 |        139 |      1,362 |
+| app\screens                                                                           |          1 |        674 |         12 |         38 |        724 |
+| app\weekly-availability                                                               |          5 |        887 |         27 |         94 |      1,008 |
+| components                                                                            |          9 |        290 |         14 |         38 |        342 |
+| components (Files)                                                                    |          6 |        193 |          3 |         25 |        221 |
+| components\ui                                                                         |          3 |         97 |         11 |         13 |        121 |
+| constants                                                                             |          1 |         41 |          8 |          5 |         54 |
+| hooks                                                                                 |          3 |         28 |          7 |         11 |         46 |
+| lib                                                                                   |          1 |        157 |         31 |         32 |        220 |
+| scripts                                                                               |          1 |         89 |         10 |         14 |        113 |
+| server                                                                                |          6 |      1,672 |         38 |        112 |      1,822 |
+| server (Files)                                                                        |          4 |      1,509 |         19 |         68 |      1,596 |
+| server\models                                                                         |          1 |         37 |          1 |         10 |         48 |
+| server\services                                                                       |          1 |        126 |         18 |         34 |        178 |
++---------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++---------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| filename                                                                              | language           | code       | comment    | blank      | total      |
++---------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| c:\Users\shet_\our-final-app\README.md                                                | Markdown           |         31 |          0 |         20 |         51 |
+| c:\Users\shet_\our-final-app\app.json                                                 | JSON with Comments |         48 |          0 |          1 |         49 |
+| c:\Users\shet_\our-final-app\app\(tabs)\_layout.tsx                                   | TypeScript JSX     |          4 |          0 |          2 |          6 |
+| c:\Users\shet_\our-final-app\app\(tabs)\explore.tsx                                   | TypeScript JSX     |         28 |          0 |          3 |         31 |
+| c:\Users\shet_\our-final-app\app\(tabs)\index.tsx                                     | TypeScript JSX     |          4 |          0 |          2 |          6 |
+| c:\Users\shet_\our-final-app\app\_layout.tsx                                          | TypeScript JSX     |         20 |          0 |          5 |         25 |
+| c:\Users\shet_\our-final-app\app\find-mentor.tsx                                      | TypeScript JSX     |        420 |          8 |         32 |        460 |
+| c:\Users\shet_\our-final-app\app\index.tsx                                            | TypeScript JSX     |          4 |          0 |          2 |          6 |
+| c:\Users\shet_\our-final-app\app\login.tsx                                            | TypeScript JSX     |        202 |          4 |         17 |        223 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\AddSkillToLearnForm.tsx       | TypeScript JSX     |        195 |          1 |         21 |        217 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\CategorySelector.tsx          | TypeScript JSX     |         90 |          1 |          5 |         96 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\ManageSkillsToLearnScreen.tsx | TypeScript JSX     |        483 |         21 |         47 |        551 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\SkillChip.tsx                 | TypeScript JSX     |        126 |          1 |         12 |        139 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\SkillsToLearnList.tsx         | TypeScript JSX     |        241 |          2 |         14 |        257 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\SubCategorySelector.tsx       | TypeScript JSX     |         97 |          1 |          6 |        104 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\SuggestedSkillsGrid.tsx       | TypeScript JSX     |        121 |          1 |         11 |        133 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\index.tsx                     | TypeScript JSX     |        390 |          8 |         30 |        428 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\skillData.ts                  | TypeScript         |        160 |          2 |          6 |        168 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\styles.ts                     | TypeScript         |          0 |          0 |          1 |          1 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\types.ts                      | TypeScript         |          0 |          0 |          1 |          1 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-learn\useManageSkillsToLearn.ts     | TypeScript         |        245 |         19 |         53 |        317 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-teach\AddSkillToTeachForm.tsx       | TypeScript JSX     |        196 |          1 |         21 |        218 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-teach\ManageSkillsToTeachScreen.tsx | TypeScript JSX     |        487 |         21 |         49 |        557 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-teach\SkillsToTeachList.tsx         | TypeScript JSX     |        242 |          2 |         14 |        258 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-teach\index.tsx                     | TypeScript JSX     |          5 |          1 |          2 |          8 |
+| c:\Users\shet_\our-final-app\app\manage-skills-to-teach\useManageSkillsToTeach.ts     | TypeScript         |        251 |         17 |         53 |        321 |
+| c:\Users\shet_\our-final-app\app\modal.tsx                                            | TypeScript JSX     |         26 |          0 |          4 |         30 |
+| c:\Users\shet_\our-final-app\app\screens\homescreen.tsx                               | TypeScript JSX     |        674 |         12 |         38 |        724 |
+| c:\Users\shet_\our-final-app\app\sessions.tsx                                         | TypeScript JSX     |          0 |          0 |          1 |          1 |
+| c:\Users\shet_\our-final-app\app\signup.tsx                                           | TypeScript JSX     |        235 |          1 |         21 |        257 |
+| c:\Users\shet_\our-final-app\app\weekly-availability\TimeField.tsx                    | TypeScript JSX     |        110 |          4 |         15 |        129 |
+| c:\Users\shet_\our-final-app\app\weekly-availability\components.tsx                   | TypeScript JSX     |        115 |          1 |         10 |        126 |
+| c:\Users\shet_\our-final-app\app\weekly-availability\index.tsx                        | TypeScript JSX     |        256 |         12 |         37 |        305 |
+| c:\Users\shet_\our-final-app\app\weekly-availability\styles.ts                        | TypeScript         |        287 |          9 |         14 |        310 |
+| c:\Users\shet_\our-final-app\app\weekly-availability\useWeeklyAvailability.ts         | TypeScript         |        119 |          1 |         18 |        138 |
+| c:\Users\shet_\our-final-app\components\external-link.tsx                             | TypeScript JSX     |         21 |          2 |          3 |         26 |
+| c:\Users\shet_\our-final-app\components\haptic-tab.tsx                                | TypeScript JSX     |         16 |          1 |          2 |         19 |
+| c:\Users\shet_\our-final-app\components\hello-wave.tsx                                | TypeScript JSX     |         18 |          0 |          2 |         20 |
+| c:\Users\shet_\our-final-app\components\parallax-scroll-view.tsx                      | TypeScript JSX     |         73 |          0 |          7 |         80 |
+| c:\Users\shet_\our-final-app\components\themed-text.tsx                               | TypeScript JSX     |         55 |          0 |          6 |         61 |
+| c:\Users\shet_\our-final-app\components\themed-view.tsx                               | TypeScript JSX     |         10 |          0 |          5 |         15 |
+| c:\Users\shet_\our-final-app\components\ui\collapsible.tsx                            | TypeScript JSX     |         40 |          0 |          6 |         46 |
+| c:\Users\shet_\our-final-app\components\ui\icon-symbol.ios.tsx                        | TypeScript JSX     |         31 |          0 |          2 |         33 |
+| c:\Users\shet_\our-final-app\components\ui\icon-symbol.tsx                            | TypeScript JSX     |         26 |         11 |          5 |         42 |
+| c:\Users\shet_\our-final-app\constants\theme.ts                                       | TypeScript         |         41 |          8 |          5 |         54 |
+| c:\Users\shet_\our-final-app\eslint.config.js                                         | JavaScript JSX     |          8 |          1 |          2 |         11 |
+| c:\Users\shet_\our-final-app\hooks\use-color-scheme.ts                                | TypeScript         |          1 |          0 |          1 |          2 |
+| c:\Users\shet_\our-final-app\hooks\use-color-scheme.web.ts                            | TypeScript         |         13 |          3 |          6 |         22 |
+| c:\Users\shet_\our-final-app\hooks\use-theme-color.ts                                 | TypeScript         |         14 |          4 |          4 |         22 |
+| c:\Users\shet_\our-final-app\lib\api.ts                                               | TypeScript         |        157 |         31 |         32 |        220 |
+| c:\Users\shet_\our-final-app\package-lock.json                                        | JSON               |     13,421 |          0 |          1 |     13,422 |
+| c:\Users\shet_\our-final-app\package.json                                             | JSON               |         49 |          0 |          1 |         50 |
+| c:\Users\shet_\our-final-app\scripts\reset-project.js                                 | JavaScript JSX     |         89 |         10 |         14 |        113 |
+| c:\Users\shet_\our-final-app\server\.env                                              | Dotenv             |          3 |          0 |          1 |          4 |
+| c:\Users\shet_\our-final-app\server\models\User.js                                    | JavaScript JSX     |         37 |          1 |         10 |         48 |
+| c:\Users\shet_\our-final-app\server\package-lock.json                                 | JSON               |      1,203 |          0 |          1 |      1,204 |
+| c:\Users\shet_\our-final-app\server\package.json                                      | JSON               |          6 |          0 |          1 |          7 |
+| c:\Users\shet_\our-final-app\server\server.js                                         | JavaScript JSX     |        297 |         19 |         65 |        381 |
+| c:\Users\shet_\our-final-app\server\services\matchingService.js                       | JavaScript JSX     |        126 |         18 |         34 |        178 |
+| c:\Users\shet_\our-final-app\tsconfig.json                                            | JSON with Comments |         17 |          0 |          1 |         18 |
+| Total                                                                                 |                    |     21,684 |        260 |        805 |     22,749 |
++---------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
