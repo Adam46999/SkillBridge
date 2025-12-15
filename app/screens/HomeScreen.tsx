@@ -1,489 +1,595 @@
-import { useRouter } from "expo-router";
-import React from "react";
+// app/screens/homescreen.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Link, useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { getMe } from "../../lib/api";
+
+// ===== Types =====
+type AvailabilitySlot = {
+  dayOfWeek: number; // 0-6
+  from: string;
+  to: string;
+};
+
+type SkillTeach = {
+  name: string;
+  level: string;
+};
+
+// ✅ FIX: server returns objects [{name, level}]
+type SkillLearn = {
+  name: string;
+  level: string;
+};
+
+type User = {
+  _id: string;
+  fullName: string;
+  email: string;
+  points: number;
+  xp: number;
+  streak: number;
+
+  // ✅ FIX here
+  skillsToLearn?: SkillLearn[];
+  skillsToTeach?: SkillTeach[];
+  availabilitySlots?: AvailabilitySlot[];
+};
+
+const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function getInitials(name: string | undefined) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getLevelFromXp(xp: number | undefined) {
+  const val = xp ?? 0;
+  const level = Math.floor(val / 100);
+  const progress = val % 100;
+  return { level, progress };
+}
 
 export default function HomeScreen() {
   const router = useRouter();
 
-  const userName = "Kareem";
-  const streak = 3;
-  const xp = 120;
-  const points = 45;
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
-  const nextSession = {
-    title: "Beginner Programming",
-    time: "Today • 18:00",
-    with: "with John",
+  const loadUser = useCallback(async () => {
+    try {
+      setErrorText(null);
+
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const me: any = await getMe(token);
+      const userFromApi: User = (me?.user ?? me) as User;
+
+      setUser(userFromApi);
+    } catch (err: any) {
+      console.log("Home / getMe error:", err);
+      setErrorText(
+        err?.message || "We couldn’t load your profile. Please pull to refresh."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUser();
+    }, [loadUser])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadUser();
   };
 
-  const notificationsText = "You have 2 new teaching requests.";
-  const isAvailable = true;
-
-  // ====== HANDLERS ======
-
-  const handleFindTeacher = () => {
-    // نفتح تاب الـ Explore (بما إن عندك app/(tabs)/explore.tsx)
-    router.push("/(tabs)/explore");
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem("token");
+    router.replace("/login");
   };
 
-  const handleSeeSessions = () => {
-    // شاشة جديدة للجلسات: app/sessions.tsx (بننشئها بعد شوي)
-    router.push("/sessions");
+  const handleFindMentor = () => {
+    router.push("/find-mentor");
   };
 
-  const handleAddLearningSkill = () => {
-    // Go to manage skills screen
-    router.push("/manage-skills");
+  const handleOfferSession = () => {
+    // لاحقاً
   };
 
-  const handleAddTeachingSkill = () => {
-    // نفس الشاشة لإدارة skills
-    router.push("/manage-skills");
-  };
-
-  const handleViewAllLearningSkills = () => {
-    // برضه نفس الشاشة
-    router.push("/manage-skills");
-  };
-
-  const handleViewAllTeachingSkills = () => {
-    // برضه نفس الشاشة
-    router.push("/manage-skills");
-  };
-
-  const handleSkillCardPress = (type: "teach" | "learn", name: string) => {
-    Alert.alert(
-      name,
-      type === "teach"
-        ? "Here you can see & manage requests for this skill."
-        : "Here you can see your progress in this skill."
+  if (loading && !user && !errorText) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.loadingText}>Loading your dashboard…</Text>
+      </View>
     );
-  };
+  }
+
+  const { level, progress } = getLevelFromXp(user?.xp);
+  const streak = user?.streak ?? 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
-      <View className="header" style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.userName} numberOfLines={1}>
-            {userName}
-          </Text>
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#F97316"
+            colors={["#F97316"]}
+          />
+        }
+      >
+        {/* ===== Top hero card ===== */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greeting}>
+                {user ? "Welcome back" : "Welcome to SkillSwap"}
+              </Text>
+              <Text style={styles.name}>
+                {user?.fullName || "SkillSwap learner"}
+              </Text>
+              <Text style={styles.tagline}>
+                See your progress, grow your skills, and connect with other
+                learners.
+              </Text>
+            </View>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {getInitials(user?.fullName)}
+              </Text>
+            </View>
+          </View>
 
-          {/* Status row */}
-          <View style={styles.statusRow}>
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: isAvailable ? "#22C55E" : "#6B7280" },
-              ]}
-            />
-            <Text style={styles.statusText}>
-              {isAvailable ? "Available to teach & learn" : "Currently offline"}
-            </Text>
+          <View style={styles.heroBottomRow}>
+            <View style={styles.levelColumn}>
+              <Text style={styles.levelLabel}>Level</Text>
+              <Text style={styles.levelValue}>{level}</Text>
+            </View>
+
+            <View style={styles.progressColumn}>
+              <View style={styles.progressHeader}>
+                <Text style={styles.progressLabel}>XP progress</Text>
+                <Text style={styles.progressValue}>
+                  {progress}/100 XP to next level
+                </Text>
+              </View>
+              <View style={styles.progressBarBackground}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.min(progress, 100)}%` },
+                  ]}
+                />
+              </View>
+            </View>
+
+            {streak > 0 && (
+              <View style={styles.streakBadge}>
+                <Text style={styles.streakEmoji}>🔥</Text>
+                <Text style={styles.streakText}>{streak}-day streak</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        <View style={styles.pointsBox}>
-          <Text style={styles.pointsLabel}>Points</Text>
-          <Text style={styles.pointsValue}>{points}</Text>
+        {errorText && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorTitle}>We couldn’t refresh your data</Text>
+            <Text style={styles.errorBody}>{errorText}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadUser}>
+              <Text style={styles.retryText}>Try again</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ===== Stats row ===== */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>XP</Text>
+            <Text style={styles.statValue}>{user?.xp ?? 0}</Text>
+            <Text style={styles.statHint}>Earned by learning from others</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Points</Text>
+            <Text style={styles.statValue}>{user?.points ?? 0}</Text>
+            <Text style={styles.statHint}>Earned by teaching others</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Streak</Text>
+            <Text style={styles.statValue}>{streak}</Text>
+            <Text style={styles.statHint}>Active days in a row</Text>
+          </View>
         </View>
-      </View>
 
-      {/* Notifications */}
-      <Text style={styles.notificationText}>{notificationsText}</Text>
-
-      {/* Streak + XP */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Streak</Text>
-          <Text style={styles.statValue}>{streak} days 🔥</Text>
-          <Text style={styles.statHint}>
-            Keep going! 4-day reward: +20 points
+        {/* ===== Quick actions ===== */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick actions</Text>
+          <Text style={styles.sectionSubtitle}>
+            Start from one of these common actions.
           </Text>
+
+          <View style={styles.quickRow}>
+            <TouchableOpacity
+              style={[styles.quickCard, styles.quickPrimary]}
+              onPress={handleFindMentor}
+            >
+              <Text style={styles.quickEmoji}>🧑‍🏫</Text>
+              <Text style={styles.quickTitle}>Find a mentor</Text>
+              <Text style={styles.quickText}>
+                Discover people who can help you with your learning goals.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickCard, styles.quickSecondary]}
+              onPress={handleOfferSession}
+            >
+              <Text style={styles.quickEmoji}>🤝</Text>
+              <Text style={styles.quickTitle}>Offer a session</Text>
+              <Text style={styles.quickText}>
+                Share a skill you’re confident about and help someone else.
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>XP</Text>
-          <Text style={styles.statValue}>{xp}</Text>
-          <Text style={styles.statHint}>Closer to your next level</Text>
-        </View>
-      </View>
+        {/* ===== Skills you want to learn ===== */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Skills you want to learn</Text>
 
-      {/* Next session */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Next session</Text>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={styles.nextSessionCard}
-          onPress={() => handleSkillCardPress("teach", nextSession.title)}
-        >
-          <Text style={styles.nextSessionTitle}>{nextSession.title}</Text>
-          <Text style={styles.nextSessionSubtitle}>
-            {nextSession.time} {nextSession.with}
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Link href="/manage-skills-to-learn" asChild>
+              <TouchableOpacity>
+                <Text style={styles.sectionAction}>Manage</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
 
-      {/* Skills to Learn */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Skills you want to learn</Text>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handleAddLearningSkill}
-          >
-            <Text style={styles.addButtonText}>+ Add</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.chipRow}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => handleSkillCardPress("learn", "React")}
-          >
-            <Text style={styles.chip}>React</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => handleSkillCardPress("learn", "English Speaking")}
-          >
-            <Text style={styles.chip}>English Speaking</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => handleSkillCardPress("learn", "Algorithms")}
-          >
-            <Text style={styles.chip}>Algorithms</Text>
-          </TouchableOpacity>
+          {user?.skillsToLearn && user.skillsToLearn.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalChips}
+            >
+              {user.skillsToLearn.map((skill, idx) => (
+                <View key={`${skill.name}-${idx}`} style={styles.chip}>
+                  <Text style={styles.chipText}>
+                    {skill.name}
+                    {skill.level && skill.level !== "Not specified"
+                      ? ` · ${skill.level}`
+                      : ""}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No learning goals yet</Text>
+              <Text style={styles.emptyText}>
+                Add a few skills you’re interested in, so we can match you with
+                the right mentors.
+              </Text>
+            </View>
+          )}
         </View>
 
-        <TouchableOpacity activeOpacity={0.7} onPress={handleAddLearningSkill}>
-          <Text style={styles.sectionLink}>Edit your learning skills →</Text>
-        </TouchableOpacity>
+        {/* ===== Skills you can teach ===== */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Skills you can teach</Text>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={handleViewAllLearningSkills}
-        >
-          <Text style={styles.viewAllLink}>View all learning skills →</Text>
-        </TouchableOpacity>
-      </View>
+            <Link href="/manage-skills-to-teach" asChild>
+              <TouchableOpacity>
+                <Text style={styles.sectionAction}>Manage</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
 
-      {/* Skills you can teach */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Skills you can teach</Text>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handleAddTeachingSkill}
-          >
-            <Text style={styles.addButtonText}>+ Add</Text>
-          </TouchableOpacity>
+          {user?.skillsToTeach && user.skillsToTeach.length > 0 ? (
+            <View style={styles.teachList}>
+              {user.skillsToTeach.map((skill, idx) => (
+                <View key={`${skill.name}-${idx}`} style={styles.teachCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.teachName}>{skill.name}</Text>
+                    <Text style={styles.teachLevel}>
+                      Level: {skill.level || "Not specified"}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>Nothing to teach yet</Text>
+              <Text style={styles.emptyText}>
+                Add at least one skill you feel comfortable teaching. This will
+                unlock more ways to earn points.
+              </Text>
+            </View>
+          )}
         </View>
 
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={styles.card}
-          onPress={() => handleSkillCardPress("teach", "Beginner Programming")}
-        >
-          <Text style={styles.cardTitle}>Beginner Programming</Text>
-          <Text style={styles.cardSubtitle}>
-            You have 2 new requests waiting
-          </Text>
-        </TouchableOpacity>
+        {/* ===== Availability ===== */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Your weekly availability</Text>
 
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={styles.card}
-          onPress={() => handleSkillCardPress("teach", "High-school Math Help")}
-        >
-          <Text style={styles.cardTitle}>High-school Math Help</Text>
-          <Text style={styles.cardSubtitle}>
-            No active requests. Turn on availability.
-          </Text>
-        </TouchableOpacity>
+            <Link href="/weekly-availability" asChild>
+              <TouchableOpacity>
+                <Text style={styles.sectionAction}>Edit</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
 
-        <Text style={styles.skillHint}>
-          Sharing your skills helps you earn more points & XP.
-        </Text>
+          {user?.availabilitySlots && user.availabilitySlots.length > 0 ? (
+            <View style={styles.availabilityList}>
+              {user.availabilitySlots.map((slot, idx) => (
+                <View key={idx} style={styles.availabilityRow}>
+                  <Text style={styles.availabilityDay}>
+                    {dayNames[slot.dayOfWeek] || "Day"}
+                  </Text>
+                  <Text style={styles.availabilityTime}>
+                    {slot.from} – {slot.to}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No availability set</Text>
+              <Text style={styles.emptyText}>
+                Let others know when you’re usually free. You can add evening or
+                weekend slots that work for you.
+              </Text>
+            </View>
+          )}
+        </View>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={handleViewAllTeachingSkills}
-        >
-          <Text style={styles.viewAllLink}>View all teaching skills →</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Buttons */}
-      <View style={styles.buttonsRow}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={styles.primaryButton}
-          onPress={handleFindTeacher}
-        >
-          <Text style={styles.primaryButtonText}>Find someone to teach me</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={styles.secondaryButton}
-          onPress={handleSeeSessions}
-        >
-          <Text style={styles.secondaryButtonText}>See my sessions</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        {/* ===== Footer ===== */}
+        <View style={styles.footerRow}>
+          <Text style={styles.footerHint}>Last updated just now</Text>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-//
-// ============= THEME STYLES =============
-//
-
+// ===== Styles =====
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    paddingBottom: 40,
-    backgroundColor: "#1C1917",
-  },
+  root: { flex: 1, backgroundColor: "#020617" },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 32 },
 
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: "#020617",
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "center",
   },
+  loadingText: { marginTop: 12, color: "#9CA3AF", fontSize: 14 },
 
-  welcomeText: {
-    color: "#A8A29E",
-    fontSize: 13,
-  },
-
-  userName: {
-    color: "#FFFBEB",
-    fontSize: 24,
-    fontWeight: "700",
-    marginTop: 2,
-    maxWidth: 200,
-  },
-
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 6,
-  },
-
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    marginRight: 6,
-  },
-
-  statusText: {
-    color: "#E5E7EB",
-    fontSize: 12,
-  },
-
-  pointsBox: {
-    backgroundColor: "#292524",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
-    alignItems: "flex-end",
+  heroCard: {
+    backgroundColor: "#020617",
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#F9731633",
+    borderColor: "#1E293B",
+    marginBottom: 18,
   },
+  heroRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  greeting: { color: "#9CA3AF", fontSize: 13 },
+  name: { color: "#F9FAFB", fontSize: 22, fontWeight: "700", marginTop: 2 },
+  tagline: { color: "#64748B", fontSize: 12, marginTop: 6 },
 
-  pointsLabel: {
-    color: "#D6D3D1",
-    fontSize: 12,
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 999,
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
   },
+  avatarText: { color: "#F97316", fontSize: 18, fontWeight: "700" },
 
-  pointsValue: {
-    color: "#FACC15",
+  heroBottomRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  levelColumn: { width: 64, alignItems: "flex-start" },
+  levelLabel: { color: "#94A3B8", fontSize: 11 },
+  levelValue: {
+    color: "#E5E7EB",
     fontSize: 20,
     fontWeight: "700",
+    marginTop: 2,
   },
 
-  notificationText: {
-    color: "#FDE68A",
-    fontSize: 13,
+  progressColumn: { flex: 1, marginHorizontal: 12 },
+  progressHeader: { flexDirection: "row", justifyContent: "space-between" },
+  progressLabel: { color: "#94A3B8", fontSize: 11 },
+  progressValue: { color: "#CBD5F5", fontSize: 11 },
+  progressBarBackground: {
+    marginTop: 6,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#0F172A",
+    overflow: "hidden",
+  },
+  progressBarFill: { height: "100%", backgroundColor: "#F97316" },
+
+  streakBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#F97316",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  streakEmoji: { marginRight: 4 },
+  streakText: { color: "#FED7AA", fontSize: 11, fontWeight: "600" },
+
+  errorBox: {
+    backgroundColor: "#451A1A",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
     marginBottom: 16,
   },
-
-  statsRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 24,
+  errorTitle: {
+    color: "#FECACA",
+    fontWeight: "600",
+    marginBottom: 4,
+    fontSize: 13,
   },
+  errorBody: { color: "#FECACA", fontSize: 12, marginBottom: 8 },
+  retryButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#B91C1C",
+  },
+  retryText: { color: "#FEE2E2", fontSize: 12, fontWeight: "500" },
 
+  statsRow: { flexDirection: "row", gap: 8, marginBottom: 18 },
   statCard: {
     flex: 1,
-    backgroundColor: "#292524",
-    borderRadius: 18,
-    padding: 14,
+    backgroundColor: "#020617",
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "#F9731633",
+    borderColor: "#1E293B",
   },
+  statLabel: { color: "#94A3B8", fontSize: 11, marginBottom: 4 },
+  statValue: { color: "#F9FAFB", fontSize: 18, fontWeight: "700" },
+  statHint: { color: "#64748B", fontSize: 10, marginTop: 4 },
 
-  statLabel: {
-    color: "#D6D3D1",
-    fontSize: 12,
-    marginBottom: 6,
-  },
-
-  statValue: {
-    color: "#FED7AA",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-
-  statHint: {
-    color: "#E5E7EB",
-    fontSize: 11,
-    marginTop: 4,
-  },
-
-  section: {
-    marginBottom: 26,
-  },
-
+  section: { marginBottom: 20 },
   sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-
-  sectionTitle: {
-    color: "#FFFBEB",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-
-  addButtonText: {
-    color: "#FDBA74",
-    fontSize: 13,
-    fontWeight: "500",
-  },
-
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
     marginBottom: 6,
   },
+  sectionTitle: { color: "#F9FAFB", fontSize: 16, fontWeight: "600" },
+  sectionSubtitle: { color: "#64748B", fontSize: 12, marginBottom: 8 },
+  sectionAction: { color: "#60A5FA", fontSize: 13, fontWeight: "500" },
 
+  quickRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+  quickCard: { flex: 1, borderRadius: 16, padding: 12, borderWidth: 1 },
+  quickPrimary: { backgroundColor: "#0F172A", borderColor: "#1D4ED8" },
+  quickSecondary: { backgroundColor: "#020617", borderColor: "#4B5563" },
+  quickEmoji: { fontSize: 20, marginBottom: 6 },
+  quickTitle: {
+    color: "#F9FAFB",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  quickText: { color: "#9CA3AF", fontSize: 12 },
+
+  horizontalChips: { paddingVertical: 4, paddingRight: 4, gap: 8 },
   chip: {
-    backgroundColor: "#451A03",
-    color: "#FED7AA",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    marginRight: 8,
+  },
+  chipText: { color: "#E5E7EB", fontSize: 12 },
+
+  emptyCard: {
+    backgroundColor: "#020617",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#111827",
+  },
+  emptyTitle: {
+    color: "#E5E7EB",
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  emptyText: { color: "#64748B", fontSize: 12 },
+
+  teachList: { gap: 8 },
+  teachCard: {
+    backgroundColor: "#020617",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+  },
+  teachName: { color: "#F9FAFB", fontSize: 14, fontWeight: "600" },
+  teachLevel: { color: "#9CA3AF", fontSize: 12, marginTop: 2 },
+
+  availabilityList: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#111827",
+    backgroundColor: "#020617",
+    paddingVertical: 4,
+  },
+  availabilityRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#020617",
+  },
+  availabilityDay: { color: "#E5E7EB", fontSize: 13 },
+  availabilityTime: { color: "#9CA3AF", fontSize: 13 },
+
+  footerRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  footerHint: { color: "#6B7280", fontSize: 11 },
+  logoutButton: {
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 999,
-    fontSize: 12,
-  },
-
-  sectionLink: {
-    color: "#FDBA74",
-    fontSize: 13,
-    marginTop: 6,
-  },
-
-  viewAllLink: {
-    color: "#FBBF24",
-    fontSize: 13,
-    marginTop: 4,
-  },
-
-  card: {
-    backgroundColor: "#292524",
-    padding: 16,
-    borderRadius: 18,
-    marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#FACC1533",
+    borderColor: "#4B5563",
   },
-
-  cardTitle: {
-    color: "#FFFBEB",
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-
-  cardSubtitle: {
-    color: "#E5E7EB",
-    fontSize: 13,
-  },
-
-  nextSessionCard: {
-    backgroundColor: "#292524",
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#F9731633",
-  },
-
-  nextSessionTitle: {
-    color: "#FFFBEB",
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-
-  nextSessionSubtitle: {
-    color: "#E5E7EB",
-    fontSize: 13,
-  },
-
-  skillHint: {
-    color: "#D1D5DB",
-    fontSize: 12,
-    marginTop: 4,
-  },
-
-  buttonsRow: {
-    marginTop: 4,
-    gap: 12,
-    marginBottom: 10,
-  },
-
-  primaryButton: {
-    backgroundColor: "#F97316",
-    paddingVertical: 14,
-    borderRadius: 999,
-    alignItems: "center",
-  },
-
-  primaryButtonText: {
-    color: "#FFFBEB",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-
-  secondaryButton: {
-    borderColor: "#FACC15",
-    borderWidth: 1,
-    paddingVertical: 12,
-    borderRadius: 999,
-    alignItems: "center",
-  },
-
-  secondaryButtonText: {
-    color: "#FDE68A",
-    fontWeight: "500",
-    fontSize: 14,
-  },
+  logoutText: { color: "#E5E7EB", fontSize: 12 },
 });

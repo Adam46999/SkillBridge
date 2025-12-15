@@ -4,7 +4,9 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,291 +21,236 @@ export default function SignupScreen() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [successName, setSuccessName] = useState<string | null>(null);
 
-  const clearMessages = () => {
-    if (errorText) setErrorText(null);
-  };
-
-  const validate = () => {
+  const handleSubmit = async () => {
+    const trimmedEmail = email.trim();
     const trimmedName = fullName.trim();
-    const trimmedEmail = email.trim().toLowerCase();
 
-    if (!trimmedName || !trimmedEmail || !password || !confirmPassword) {
+    if (!trimmedName || !trimmedEmail || !password || !confirm) {
       setErrorText("Please fill in all fields.");
-      return false;
+      return;
     }
-    if (trimmedName.length < 3) {
-      setErrorText("Full name must be at least 3 characters long.");
-      return false;
+
+    if (password !== confirm) {
+      setErrorText("Passwords do not match.");
+      return;
     }
-    if (!trimmedEmail.includes("@") || !trimmedEmail.includes(".")) {
-      setErrorText("Please enter a valid email address.");
-      return false;
-    }
+
     if (password.length < 6) {
       setErrorText("Password must be at least 6 characters long.");
-      return false;
+      return;
     }
-    if (password !== confirmPassword) {
-      setErrorText("Passwords do not match.");
-      return false;
-    }
+
+    setSubmitting(true);
     setErrorText(null);
-    return true;
-  };
-
-  const handleSignup = async () => {
-    if (loading || redirecting) return;
-    Keyboard.dismiss();
-    clearMessages();
-
-    if (!validate()) return;
 
     try {
-      setLoading(true);
+      const res: any = await signup({
+        fullName: trimmedName,
+        email: trimmedEmail,
+        password,
+      });
 
-      const trimmedName = fullName.trim();
-      const trimmedEmail = email.trim().toLowerCase();
+      const token: string | undefined = res?.token;
+      if (!token) {
+        throw new Error("Signup succeeded but token is missing from response.");
+      }
 
-      const data = await signup(trimmedName, trimmedEmail, password);
+      await AsyncStorage.setItem("token", token);
+      await AsyncStorage.setItem("authToken", token);
 
-      console.log("Signup success:", data);
-
-      await AsyncStorage.setItem("authToken", data.token);
-
-      // نجهز شاشة النجاح
-      setSuccessName(data.user.fullName || trimmedName || "there");
-      setRedirecting(true);
-
-      // بعد ثانية ننقله على التابات
-      setTimeout(() => {
-        router.replace("/(tabs)" as any);
-      }, 1000);
+      router.replace("/(tabs)");
     } catch (err: any) {
-      console.log("Signup error:", err);
-      const msg =
-        err?.message === "Email already used"
-          ? "This email is already registered. Try logging in instead."
-          : err?.message ||
-            "Could not create your account. Please review your details and try again.";
-      setErrorText(msg);
+      console.log("SIGNUP ERROR (frontend):", err);
+      setErrorText(err?.message || "We couldn’t create your account.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const goToLogin = () => {
-    if (loading || redirecting) return;
-    router.push("/login" as any);
-  };
-
-  // 🔁 شاشة النجاح الكاملة بعد إنشاء الحساب
-  if (redirecting) {
-    return (
-      <View style={styles.successScreen}>
-        <Text style={styles.bigCheck}>✨</Text>
-        <Text style={styles.successTitle}>
-          Welcome to SkillSwap{successName ? `, ${successName}` : ""}!
-        </Text>
-        <Text style={styles.successSubtitle}>
-          Your account is ready. We’re setting up your dashboard…
-        </Text>
-        <ActivityIndicator style={{ marginTop: 16 }} />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create an account</Text>
-      <Text style={styles.subtitle}>
-        Join SkillSwap and start exchanging skills with other learners.
-      </Text>
-
-      {errorText && (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorTitle}>We couldn’t create your account</Text>
-          <Text style={styles.errorText}>{errorText}</Text>
-        </View>
-      )}
-
-      <TextInput
-        style={styles.input}
-        placeholder="Full name"
-        placeholderTextColor="#9CA3AF"
-        value={fullName}
-        onChangeText={(text) => {
-          setFullName(text);
-          clearMessages();
-        }}
-        returnKeyType="next"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email address"
-        placeholderTextColor="#9CA3AF"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={(text) => {
-          setEmail(text);
-          clearMessages();
-        }}
-        returnKeyType="next"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#9CA3AF"
-        secureTextEntry
-        value={password}
-        onChangeText={(text) => {
-          setPassword(text);
-          clearMessages();
-        }}
-        returnKeyType="next"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Confirm password"
-        placeholderTextColor="#9CA3AF"
-        secureTextEntry
-        value={confirmPassword}
-        onChangeText={(text) => {
-          setConfirmPassword(text);
-          clearMessages();
-        }}
-        returnKeyType="done"
-        onSubmitEditing={handleSignup}
-      />
-
-      <TouchableOpacity
-        style={[
-          styles.primaryButton,
-          (loading || redirecting) && styles.disabledButton,
-        ]}
-        onPress={handleSignup}
-        disabled={loading || redirecting}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#020617" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.primaryButtonText}>
-          {loading ? "Creating account..." : "Sign up"}
+        <Text style={styles.appTitle}>SkillSwap</Text>
+        <Text style={styles.pageTitle}>Create an account</Text>
+        <Text style={styles.subtitle}>
+          Join SkillSwap and start exchanging skills with other learners.
         </Text>
-      </TouchableOpacity>
 
-      <TouchableOpacity onPress={goToLogin} disabled={loading || redirecting}>
-        <Text style={styles.linkText}>
-          Already have an account?{" "}
-          <Text style={styles.linkHighlight}>Sign in</Text>
-        </Text>
-      </TouchableOpacity>
-    </View>
+        {errorText && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorTitle}>
+              We couldn’t create your account
+            </Text>
+            <Text style={styles.errorBody}>{errorText}</Text>
+          </View>
+        )}
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Full name</Text>
+          <TextInput
+            style={styles.input}
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Your name"
+            placeholderTextColor="#6b7280"
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Email</Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="you@example.com"
+            placeholderTextColor="#6b7280"
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="••••••••"
+            placeholderTextColor="#6b7280"
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Confirm password</Text>
+          <TextInput
+            style={styles.input}
+            value={confirm}
+            onChangeText={setConfirm}
+            secureTextEntry
+            placeholder="••••••••"
+            placeholderTextColor="#6b7280"
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            submitting && styles.submitButtonDisabled,
+          ]}
+          onPress={handleSubmit}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.submitText}>Sign up</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{ marginTop: 16 }}
+          onPress={() => router.push("/login")}
+        >
+          <Text style={styles.secondaryText}>
+            Already have an account?{" "}
+            <Text style={styles.secondaryLink}>Sign in</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  // الشاشة الأساسية
   container: {
-    flex: 1,
-    backgroundColor: "#111827",
-    justifyContent: "center",
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 80,
+    paddingBottom: 40,
   },
-  title: {
-    color: "#FFFFFF",
+  appTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#e5e7eb",
+    marginBottom: 8,
+  },
+  pageTitle: {
     fontSize: 26,
     fontWeight: "700",
-    marginBottom: 8,
-    textAlign: "left",
+    color: "#f9fafb",
   },
   subtitle: {
-    color: "#9CA3AF",
-    fontSize: 14,
-    marginBottom: 24,
+    fontSize: 13,
+    color: "#9ca3af",
+    marginTop: 4,
+    marginBottom: 20,
   },
   errorBox: {
-    backgroundColor: "#451A1A",
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-    marginBottom: 12,
-  },
-  errorTitle: {
-    color: "#FCA5A5",
-    fontWeight: "600",
-    marginBottom: 2,
-    fontSize: 13,
-  },
-  errorText: {
-    color: "#FECACA",
-    fontSize: 13,
-  },
-  input: {
-    backgroundColor: "#1F2937",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#FFFFFF",
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#374151",
-  },
-  primaryButton: {
-    backgroundColor: "#22C55E",
-    paddingVertical: 12,
-    borderRadius: 999,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: "#FEFCE8",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  linkText: {
-    color: "#9CA3AF",
-    textAlign: "center",
-    marginTop: 16,
-    fontSize: 13,
-  },
-  linkHighlight: {
-    color: "#FBBF24",
-    fontWeight: "600",
-  },
-
-  // شاشة النجاح
-  successScreen: {
-    flex: 1,
-    backgroundColor: "#020617",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  bigCheck: {
-    fontSize: 56,
+    backgroundColor: "#7f1d1d",
+    borderRadius: 12,
+    padding: 12,
     marginBottom: 16,
   },
-  successTitle: {
-    color: "#ECFEFF",
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  successSubtitle: {
-    color: "#94A3B8",
+  errorTitle: {
     fontSize: 14,
+    fontWeight: "600",
+    color: "#fee2e2",
+    marginBottom: 2,
+  },
+  errorBody: {
+    fontSize: 13,
+    color: "#fee2e2",
+  },
+  fieldGroup: {
+    marginBottom: 12,
+  },
+  label: {
+    fontSize: 13,
+    color: "#d1d5db",
+    marginBottom: 4,
+  },
+  input: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#4b5563",
+    backgroundColor: "#020617",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#f9fafb",
+  },
+  submitButton: {
+    marginTop: 16,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: "#22c55e",
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
+  },
+  submitText: {
+    color: "#ffffff",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  secondaryText: {
+    fontSize: 13,
+    color: "#9ca3af",
     textAlign: "center",
+  },
+  secondaryLink: {
+    color: "#fdba74",
+    fontWeight: "600",
   },
 });

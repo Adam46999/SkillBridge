@@ -1,15 +1,31 @@
+// server/models/User.js
 const mongoose = require("mongoose");
 
-const AvailabilitySlotSchema = new mongoose.Schema({
-  dayOfWeek: Number, // 0-6
-  from: String, // "18:00"
-  to: String, // "19:00"
-});
+const AvailabilitySlotSchema = new mongoose.Schema(
+  {
+    dayOfWeek: { type: Number, required: true, min: 0, max: 6 },
+    from: { type: String, required: true },
+    to: { type: String, required: true },
+  },
+  { _id: false }
+);
 
-const SkillTeachSchema = new mongoose.Schema({
-  name: String, // "Beginner Programming"
-  level: String, // "Beginner" / "Intermediate" / "Advanced"
-});
+const SkillTeachSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    level: { type: String, default: "Not specified" },
+    embedding: { type: [Number], default: undefined },
+  },
+  { _id: false }
+);
+
+const SkillLearnSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    level: { type: String, default: "Not specified" },
+  },
+  { _id: false }
+);
 
 const UserSchema = new mongoose.Schema(
   {
@@ -17,8 +33,11 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
 
-    skillsToLearn: [String],
-    skillsToTeach: [SkillTeachSchema],
+    // ✅ NEW format: [{name, level}]
+    // (server route still accepts old string[] too)
+    skillsToLearn: { type: [SkillLearnSchema], default: [] },
+
+    skillsToTeach: { type: [SkillTeachSchema], default: [] },
 
     points: { type: Number, default: 0 },
     xp: { type: Number, default: 0 },
@@ -27,11 +46,11 @@ const UserSchema = new mongoose.Schema(
     avgRating: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },
 
-    availabilitySlots: [AvailabilitySlotSchema],
+    availabilitySlots: { type: [AvailabilitySlotSchema], default: [] },
 
     preferences: {
-      communicationModes: [String], // ["chat","voice","screen"]
-      languages: [String], // ["en","he","ar"]
+      communicationModes: { type: [String], default: [] },
+      languages: { type: [String], default: [] },
     },
   },
   { timestamps: true }

@@ -1,135 +1,204 @@
 // lib/api.ts
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
-// ⛔ لو بتستخدم موبايل حقيقي غيّر localhost إلى IP اللابتوب
-// مثال: const BASE_URL = "http://192.168.1.23:4000";
-const BASE_URL = "http://localhost:4000";
+function resolveApiUrl(): string {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (envUrl) return envUrl;
 
-type AuthUser = {
-  id: string;
+  const debuggerHost = (Constants as any)?.debuggerHost as string | undefined;
+  let hostFromExpo: string | null = null;
+
+  if (debuggerHost) hostFromExpo = debuggerHost.split(":")[0];
+  else if (typeof window !== "undefined") hostFromExpo = window.location.hostname;
+
+  if (hostFromExpo) {
+    if (Platform.OS === "android") {
+      if (hostFromExpo === "localhost" || hostFromExpo === "127.0.0.1") {
+        return "http://10.0.2.2:4000";
+      }
+      return `http://${hostFromExpo}:4000`;
+    }
+    return `http://${hostFromExpo}:4000`;
+  }
+
+  if (Platform.OS === "android") return "http://10.0.2.2:4000";
+  return "http://localhost:4000";
+}
+
+export const API_URL = resolveApiUrl();
+console.log("🔗 API_URL resolved to:", API_URL);
+
+async function handleResponse(res: Response) {
+  const text = await res.text();
+
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!res.ok) {
+    console.log("API ERROR =>", {
+      url: res.url,
+      status: res.status,
+      rawBody: text,
+      parsed: data,
+    });
+
+    const message =
+      (data && (data as any).error) ||
+      (data && (data as any).message) ||
+      (typeof data === "string" && data) ||
+      `Request failed with status ${res.status}`;
+
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+// ---------- AUTH ----------
+export async function signup(params: {
   fullName: string;
   email: string;
-  points: number;
-  xp: number;
-  streak: number;
-};
+  password: string;
+}) {
+  const res = await fetch(`${API_URL}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return handleResponse(res);
+}
 
-type AuthResponse = {
-  token: string;
-  user: AuthUser;
-};
+export async function login(params: { email: string; password: string }) {
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return handleResponse(res);
+}
 
-export type AvailabilitySlot = {
-  dayOfWeek: number; // 0-6
-  from: string; // "18:00"
-  to: string; // "19:00"
-};
+// ---------- TYPES ----------
+export type AvailabilitySlot = { dayOfWeek: number; from: string; to: string };
 
-export type SkillTeach = {
-  name: string;
-  level: string;
-};
+export type SkillTeach = { name: string; level: string };
 
-export type UserProfile = {
-  _id: string;
+// ✅ skillsToLearn objects (حسب السيرفر عندك)
+export type SkillLearn = { name: string; level: string };
+
+export type MentorMatch = {
+  mentorId: string;
   fullName: string;
-  email: string;
-  points: number;
-  xp: number;
-  streak: number;
-  skillsToLearn?: string[];
+  matchScore: number;
+  mainMatchedSkill?: { name: string; level: string; similarityScore: number };
   skillsToTeach?: SkillTeach[];
   availabilitySlots?: AvailabilitySlot[];
 };
 
-// ---------- AUTH ----------
+// ✅ NEW: matching mode (عشان تغيّر من داخل الأب)
+export type MatchingMode = "local" | "openai" | "hybrid";
 
-export async function signup(
-  fullName: string,
-  email: string,
-  password: string
-): Promise<AuthResponse> {
-  const res = await fetch(`${BASE_URL}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fullName, email, password }),
-  });
+// ✅ NEW: matching status (preflight)
+export type MatchingStatus = {
+  openaiAvailable: boolean;
+  reason: "OK" | "NO_KEY" | "ERROR" | string;
+  recommendedMode: "local" | "hybrid";
+};
 
-  const data = await res.json().catch(() => ({}));
-  console.log("Signup response:", data);
+// ✅ NEW: matching meta (returned with results)
+export type MatchingMeta = {
+  requestedMode: MatchingMode | null;
+  modeUsed: MatchingMode | null;
+  fallbackUsed: boolean;
+  message?: string;
+};
 
-  if (!res.ok) {
-    const message = (data && (data.error || data.details)) || "Signup failed";
-    throw new Error(message);
-  }
-
-  return data;
-}
-
-export async function login(
-  email: string,
-  password: string
-): Promise<AuthResponse> {
-  const res = await fetch(`${BASE_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  console.log("Login response:", data);
-
-  if (!res.ok) {
-    const message = (data && (data.error || data.details)) || "Login failed";
-    throw new Error(message);
-  }
-
-  return data;
-}
-
-// ---------- PROFILE ----------
-
-export async function getMe(token: string): Promise<UserProfile> {
-  const res = await fetch(`${BASE_URL}/api/me`, {
+// ---------- USER ----------
+export async function getMe(token: string) {
+  const res = await fetch(`${API_URL}/api/me`, {
+    method: "GET",
     headers: { Authorization: `Bearer ${token}` },
   });
-
-  const data = await res.json().catch(() => ({}));
-  console.log("getMe response:", data);
-
-  if (!res.ok) {
-    const message =
-      (data && (data.error || data.details)) || "Failed to load user";
-    throw new Error(message);
-  }
-
-  return data;
+  return handleResponse(res);
 }
 
+// ---------- PROFILE UPDATE ----------
 export async function updateProfile(
   token: string,
-  payload: {
-    skillsToLearn?: string[];
+  partial: {
+    skillsToLearn?: SkillLearn[];
     skillsToTeach?: SkillTeach[];
     availabilitySlots?: AvailabilitySlot[];
   }
-): Promise<UserProfile> {
-  const res = await fetch(`${BASE_URL}/api/me/profile`, {
+) {
+  const res = await fetch(`${API_URL}/api/me/profile`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(partial),
   });
 
-  const data = await res.json().catch(() => ({}));
-  console.log("updateProfile response:", data);
+  return handleResponse(res);
+}
 
-  if (!res.ok) {
-    const message =
-      (data && (data.error || data.details)) || "Failed to update profile";
-    throw new Error(message);
+export async function updateWeeklyAvailability(
+  token: string,
+  availabilitySlots: AvailabilitySlot[]
+) {
+  return updateProfile(token, { availabilitySlots });
+}
+
+export async function updateSkillsToTeach(
+  token: string,
+  skillsToTeach: SkillTeach[]
+) {
+  return updateProfile(token, { skillsToTeach });
+}
+
+export async function updateSkillsToLearn(
+  token: string,
+  skillsToLearn: SkillLearn[]
+) {
+  return updateProfile(token, { skillsToLearn });
+}
+
+// ---------- MATCHING STATUS ----------
+export async function getMatchingStatus(): Promise<MatchingStatus> {
+  const res = await fetch(`${API_URL}/api/matching/status`, {
+    method: "GET",
+  });
+  return handleResponse(res);
+}
+
+// ---------- MATCHING ----------
+export async function getMentorMatches(
+  token: string,
+  params: {
+    skill: string;
+    level: "Beginner" | "Intermediate" | "Advanced";
+    availabilitySlots?: AvailabilitySlot[];
+    mode?: MatchingMode;
   }
+): Promise<{ results: MentorMatch[]; meta?: MatchingMeta }> {
+  const res = await fetch(`${API_URL}/api/matches/mentors`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      skill: params.skill,
+      level: params.level,
+      availabilitySlots: params.availabilitySlots ?? [],
+      mode: params.mode, // لو بدك افتراضي خليها: params.mode ?? "local"
+    }),
+  });
 
-  return data;
+  return handleResponse(res);
 }

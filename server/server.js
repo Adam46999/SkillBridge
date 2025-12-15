@@ -6,7 +6,12 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+
+// 👇 موديل اليوزر من نفس الفولدر (./) مش ../
 const User = require("./models/User");
+
+// ✅ NEW: matching router (index.js) — local/openai/hybrid
+const { findMentorMatches } = require("./matching");
 
 const app = express();
 
@@ -17,15 +22,30 @@ app.use(express.json());
 // ===== ENV & DB =====
 const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-fallback-secret-123";
+const PORT = process.env.PORT || 4000;
 
 console.log("Loaded MONGO_URI?", !!MONGO_URI);
 console.log("Loaded JWT_SECRET?", !!process.env.JWT_SECRET);
 console.log("JWT_SECRET used:", JWT_SECRET);
+console.log("MATCHING_MODE:", process.env.MATCHING_MODE || "local");
 
+// تأكد إن MONGO_URI موجود
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI is not defined in .env – check your file.");
+  process.exit(1);
+}
+
+// اتصال بـ MongoDB Atlas
 mongoose
-  .connect(MONGO_URI)
-  .then(() => console.log("✅ Connected to MongoDB Atlas"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err.message));
+  .connect(MONGO_URI, {
+    dbName: "myapp",
+  })
+  .then(() => {
+    console.log("✅ Connected to MongoDB Atlas");
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err.message);
+  });
 
 // ===== Helpers =====
 function createToken(userId) {
@@ -49,11 +69,44 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// ✅ Matching readiness helper (used by /api/matching/status)
+function getOpenAIStatus() {
+  const raw = String(process.env.OPENAI_API_KEY || "").trim();
+  const hasKey = !!raw && raw !== "YOUR_KEY_HERE";
+
+  if (!hasKey) {
+    return {
+      openaiAvailable: false,
+      reason: "NO_KEY",
+      recommendedMode: "local", // safest default if no key
+    };
+  }
+
+  return {
+    openaiAvailable: true,
+    reason: "OK",
+    recommendedMode: "hybrid", // best UX when available
+  };
+}
+
 // ===== Routes =====
 
 // Health check
 app.get("/", (req, res) => {
   res.json({ message: "SkillSwap backend alive 💀🔥" });
+});
+
+// ✅ Matching status (no auth needed, safe + fast)
+app.get("/api/matching/status", (req, res) => {
+  try {
+    return res.json(getOpenAIStatus());
+  } catch (err) {
+    return res.json({
+      openaiAvailable: false,
+      reason: "ERROR",
+      recommendedMode: "local",
+    });
+  }
 });
 
 // ---------- SIGNUP ----------
@@ -171,12 +224,35 @@ app.put("/api/me/profile", authMiddleware, async (req, res) => {
   try {
     const { skillsToLearn, skillsToTeach, availabilitySlots } = req.body;
 
+    console.log("PUT /api/me/profile BODY:", JSON.stringify(req.body, null, 2));
+
     const update = {};
 
+    // ✅ skillsToLearn supports BOTH string[] and object[]
     if (Array.isArray(skillsToLearn)) {
       update.skillsToLearn = skillsToLearn
-        .map((s) => String(s).trim())
-        .filter((s) => s.length > 0);
+        .map((item) => {
+          if (typeof item === "string") {
+            const name = item.trim();
+            if (!name) return null;
+            return { name, level: "Not specified" };
+          }
+
+          if (
+            item &&
+            typeof item === "object" &&
+            typeof item.name === "string"
+          ) {
+            const name = String(item.name).trim();
+            if (!name) return null;
+
+            const level = String(item.level || "").trim() || "Not specified";
+            return { name, level };
+          }
+
+          return null;
+        })
+        .filter(Boolean);
     }
 
     if (Array.isArray(skillsToTeach)) {
@@ -235,7 +311,6 @@ app.post("/auth/forgot-password", async (req, res) => {
     const normalizedEmail = email.toLowerCase().trim();
     const user = await User.findOne({ email: normalizedEmail });
 
-    // نفس الرد سواء لقى أو لا (لأسباب أمنية)
     if (!user) {
       return res.json({
         message:
@@ -246,7 +321,7 @@ app.post("/auth/forgot-password", async (req, res) => {
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     user.passwordResetCode = resetCode;
-    user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+    user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000);
     await user.save();
 
     const response = {
@@ -325,8 +400,60 @@ app.post("/auth/reset-password", async (req, res) => {
   }
 });
 
+// ---------- MENTOR MATCHING ----------
+app.post("/api/matches/mentors", authMiddleware, async (req, res) => {
+  try {
+    const { skill, level, availabilitySlots, mode } = req.body;
+
+    if (!skill || !level) {
+      return res.status(400).json({ error: "Skill and level are required." });
+    }
+
+    const userAvailability = Array.isArray(availabilitySlots)
+      ? availabilitySlots
+      : [];
+
+    // ✅ call matching layer
+    const out = await findMentorMatches({
+      userId: req.userId,
+      skillQuery: skill,
+      level,
+      userAvailability,
+      mode, // ✅ هذا اللي بخليك تغيّر من قلب الاب
+    });
+
+    // ✅ Backward compatible:
+    // - old behavior: out is an array => results only
+    // - new behavior: out is { results, meta }
+    if (Array.isArray(out)) {
+      return res.json({
+        results: out,
+        meta: {
+          requestedMode: mode || null,
+          modeUsed: null,
+          fallbackUsed: false,
+        },
+      });
+    }
+
+    const results = Array.isArray(out?.results) ? out.results : [];
+    const meta = out?.meta || {
+      requestedMode: mode || null,
+      modeUsed: null,
+      fallbackUsed: false,
+    };
+
+    return res.json({ results, meta });
+  } catch (err) {
+    console.error("MATCHING ERROR:", err);
+    res.status(500).json({
+      error: "Failed to find mentor matches",
+      details: err instanceof Error ? err.message : "Unknown server error",
+    });
+  }
+});
+
 // ===== Start server =====
-const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
