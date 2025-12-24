@@ -202,3 +202,27 @@ export async function getMentorMatches(
 
   return handleResponse(res);
 }
+// ---------- PUBLIC USER PROFILE (Mentor) ----------
+export type PublicUserProfile = {
+  id: string;
+  fullName: string;
+  points: number;
+  xp: number;
+  streak: number;
+  avgRating: number;
+  ratingCount: number;
+  skillsToTeach: SkillTeach[];
+  availabilitySlots: AvailabilitySlot[];
+  preferences?: { communicationModes?: string[]; languages?: string[] };
+};
+
+export async function getPublicUserProfile(
+  token: string,
+  userId: string
+): Promise<PublicUserProfile> {
+  const res = await fetch(`${API_URL}/api/users/${userId}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(res);
+}

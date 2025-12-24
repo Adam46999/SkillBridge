@@ -1,151 +1,119 @@
 // app/weekly-availability/TimeField.tsx
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
-import React, { useMemo, useState } from "react";
-import {
-  Modal,
-  Platform,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { styles } from "./styles";
+import React, { useEffect, useState } from "react";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 
 type Props = {
-  label: string;
+  label?: string;
   value: string;
-  onChange: (newTime: string) => void;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
 };
 
-/**
- * Converts "HH:MM" → Date (safe default)
- */
-function parseTimeToDate(time: string): Date {
-  const d = new Date();
-  const [hStr, mStr] = time.split(":");
-  const h = Number(hStr);
-  const m = Number(mStr);
+function normalizeTimeInput(raw: string): string {
+  let s = raw.replace(/[^\d:]/g, "");
 
-  if (!isNaN(h) && !isNaN(m)) {
-    d.setHours(h, m, 0, 0);
-  } else {
-    d.setHours(18, 0, 0, 0); // safe default
-  }
-  return d;
-}
-
-/**
- * Date → "HH:MM"
- */
-function formatDateToTime(date: Date): string {
-  const h = date.getHours().toString().padStart(2, "0");
-  const m = date.getMinutes().toString().padStart(2, "0");
-  return `${h}:${m}`;
-}
-
-const TimeField: React.FC<Props> = ({ label, value, onChange }) => {
-  /**
-   * Memoized initial date so we never violate hooks rules
-   */
-  const initialDate = useMemo(() => parseTimeToDate(value), [value]);
-
-  const [open, setOpen] = useState(false);
-  const [tempDate, setTempDate] = useState<Date>(initialDate);
-
-  const openPicker = () => {
-    setTempDate(parseTimeToDate(value));
-    setOpen(true);
-  };
-
-  const closePicker = () => setOpen(false);
-
-  const confirmPicker = () => {
-    onChange(formatDateToTime(tempDate));
-    setOpen(false);
-  };
-
-  const handlePickerChange = (event: DateTimePickerEvent, date?: Date) => {
-    if (event.type === "dismissed") return;
-    if (date) setTempDate(date);
-  };
-
-  /**
-   * 🌐 WEB:
-   * Simple numeric input, same visual language
-   */
-  if (Platform.OS === "web") {
-    return (
-      <View style={styles.timeFieldBox}>
-        <Text style={styles.timeFieldLabel}>{label}</Text>
-        <TextInput
-          style={styles.timeFieldValue}
-          value={value}
-          onChangeText={onChange}
-          keyboardType="numeric"
-          placeholder="18:00"
-          placeholderTextColor="#64748B"
-          accessibilityLabel={`${label} time input`}
-        />
-      </View>
-    );
+  const digitsOnly = s.replace(/:/g, "");
+  if (!s.includes(":") && digitsOnly.length >= 3) {
+    const hh = digitsOnly.slice(0, 2);
+    const mm = digitsOnly.slice(2, 4);
+    s = `${hh}:${mm}`;
   }
 
-  /**
-   * 📱 MOBILE:
-   * Button → Modal → DateTimePicker
-   */
+  if (s.length > 5) s = s.slice(0, 5);
+
+  if (s.includes(":")) {
+    const [hhRaw = "", mmRaw = ""] = s.split(":");
+    const hh = hhRaw.slice(0, 2);
+    const mm = mmRaw.slice(0, 2);
+    s = `${hh}:${mm}`;
+  }
+
+  return s;
+}
+
+function isValidPartialTime(v: string): boolean {
+  if (v === "") return true;
+  if (!/^\d{0,2}(:\d{0,2})?$/.test(v)) return false;
+
+  const [hhStr, mmStr] = v.split(":");
+  if (hhStr.length > 0) {
+    const hh = Number(hhStr);
+    if (!Number.isFinite(hh) || hh > 23) return false;
+  }
+  if (mmStr !== undefined && mmStr.length > 0) {
+    const mm = Number(mmStr);
+    if (!Number.isFinite(mm) || mm > 59) return false;
+  }
+  return true;
+}
+
+export default function TimeField({
+  label,
+  value,
+  onChange,
+  placeholder = "HH:MM",
+  disabled = false,
+}: Props) {
+  const [local, setLocal] = useState<string>(value ?? "");
+
+  // ✅ الصحيح: side-effect -> useEffect
+  useEffect(() => {
+    setLocal(value ?? "");
+  }, [value]);
+
+  const onTextChange = (txt: string) => {
+    const normalized = normalizeTimeInput(txt);
+    if (!isValidPartialTime(normalized)) return;
+
+    setLocal(normalized);
+    onChange(normalized);
+  };
+
   return (
-    <>
-      <TouchableOpacity
-        style={styles.timeFieldBox}
-        onPress={openPicker}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel={`Select ${label} time`}
-      >
-        <Text style={styles.timeFieldLabel}>{label}</Text>
-        <Text style={styles.timeFieldValue}>{value}</Text>
-      </TouchableOpacity>
+    <View style={styles.wrap}>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={closePicker}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Choose time</Text>
-
-            <DateTimePicker
-              value={tempDate}
-              mode="time"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={handlePickerChange}
-            />
-
-            <View style={styles.modalButtonsRow}>
-              <TouchableOpacity
-                onPress={closePicker}
-                accessibilityRole="button"
-              >
-                <Text style={styles.modalCancel}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={confirmPicker}
-                accessibilityRole="button"
-              >
-                <Text style={styles.modalDone}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </>
+      <TextInput
+        value={local}
+        onChangeText={onTextChange}
+        placeholder={placeholder}
+        editable={!disabled}
+        keyboardType={Platform.select({
+          ios: "numbers-and-punctuation",
+          android: "numeric",
+          default: "numeric",
+        })}
+        style={[styles.input, disabled && styles.inputDisabled]}
+        placeholderTextColor="#64748B"
+        maxLength={5}
+      />
+    </View>
   );
-};
+}
 
-export default TimeField;
+const styles = StyleSheet.create({
+  wrap: {
+    width: "100%",
+  },
+  label: {
+    color: "#94A3B8",
+    fontSize: 11,
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    backgroundColor: "#0B1220",
+    color: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  inputDisabled: {
+    opacity: 0.6,
+  },
+});

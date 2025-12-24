@@ -44,17 +44,18 @@ function evictIfNeeded() {
   }
 }
 
-function getClient() {
+function hasUsableKey() {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  return !!apiKey && apiKey !== "YOUR_KEY_HERE";
+}
+
+function getClientSafe() {
+  // IMPORTANT: never throw here (we want clean fallback UX)
+  if (!hasUsableKey()) return null;
+
   if (client) return client;
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey === "YOUR_KEY_HERE") {
-    throw new Error(
-      "OPENAI_API_KEY is missing. Set it in .env (or switch MATCHING_MODE=local)."
-    );
-  }
-
-  client = new OpenAI({ apiKey });
+  client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   return client;
 }
 
@@ -64,12 +65,21 @@ function getModel() {
 
 /**
  * Returns embedding vector for a text
+ * - returns null if:
+ *   - empty text
+ *   - no API key
+ *   - OpenAI error
+ *
  * @param {string} text
  * @returns {Promise<number[]|null>}
  */
 async function getEmbedding(text) {
   const input = String(text || "").trim();
   if (!input) return null;
+
+  // no key => no embedding (caller should fallback)
+  const openai = getClientSafe();
+  if (!openai) return null;
 
   const key = normalizeKey(input);
 
@@ -90,7 +100,6 @@ async function getEmbedding(text) {
   // 3) fetch + store
   const promise = (async () => {
     try {
-      const openai = getClient();
       const model = getModel();
 
       const resp = await openai.embeddings.create({
@@ -109,8 +118,10 @@ async function getEmbedding(text) {
 
       evictIfNeeded();
       return emb;
+    } catch (err) {
+      // silent fail => caller can fallback (hybrid/local)
+      return null;
     } finally {
-      // ensure cleanup even on errors
       inFlight.delete(key);
     }
   })();

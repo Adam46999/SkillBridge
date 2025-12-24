@@ -1,127 +1,169 @@
 // server/matching/index.js
-
 const { findMentorMatchesLocal } = require("./localMatcher");
 const { findMentorMatchesOpenAI } = require("./openaiMatcher");
 
-/**
- * Normalize mode string
- */
 function normalizeMode(raw) {
   const m = String(raw || "")
     .trim()
     .toLowerCase();
-  if (m === "local" || m === "openai" || m === "hybrid") return m;
+  if (m === "openai" || m === "local" || m === "hybrid") return m;
   return null;
 }
 
-/**
- * Decide requested mode (priority: request -> env -> local)
- */
-function resolveMode(overrideMode) {
-  const fromReq = normalizeMode(overrideMode);
-  if (fromReq) return fromReq;
+function getMode(overrideMode) {
+  const fromOverride = normalizeMode(overrideMode);
+  if (fromOverride) return fromOverride;
 
   const fromEnv = normalizeMode(process.env.MATCHING_MODE);
   return fromEnv || "local";
 }
 
-/**
- * Check OpenAI readiness
- */
 function isOpenAIReady() {
-  const key = String(process.env.OPENAI_API_KEY || "").trim();
-  return !!key && key !== "YOUR_KEY_HERE";
+  const raw = String(process.env.OPENAI_API_KEY || "").trim();
+  return !!raw && raw !== "YOUR_KEY_HERE";
+}
+
+function metaBase({ requestedMode, modeUsed, fallbackUsed, reason = "OK" }) {
+  return {
+    requestedMode: requestedMode || null,
+    modeUsed: modeUsed || null,
+    fallbackUsed: !!fallbackUsed,
+    reason, // OK | NO_KEY | OPENAI_EMPTY | OPENAI_ERROR
+  };
 }
 
 /**
- * Main matcher entry
- * Always returns: { results, meta }
+ * modes:
+ * - local
+ * - openai
+ * - hybrid (openai then fallback to local)
+ *
+ * Returns:
+ * { results: MentorMatch[], meta: { requestedMode, modeUsed, fallbackUsed, reason } }
  */
 async function findMentorMatches(params) {
-  const requestedMode = resolveMode(params?.mode);
-  const openaiReady = isOpenAIReady();
+  const requestedMode = normalizeMode(params?.mode) || null;
+  const mode = getMode(params?.mode);
 
-  // ===== OpenAI requested but not ready → fallback =====
-  if (
-    (requestedMode === "openai" || requestedMode === "hybrid") &&
-    !openaiReady
-  ) {
+  // -------- LOCAL --------
+  if (mode === "local") {
     const results = await findMentorMatchesLocal(params);
     return {
       results,
-      meta: {
+      meta: metaBase({
         requestedMode,
         modeUsed: "local",
-        fallbackUsed: true,
-        reason: "NO_OPENAI_KEY",
-      },
-    };
-  }
-
-  // ===== OpenAI only =====
-  if (requestedMode === "openai") {
-    const results = await findMentorMatchesOpenAI(params);
-    return {
-      results,
-      meta: {
-        requestedMode,
-        modeUsed: "openai",
         fallbackUsed: false,
         reason: "OK",
-      },
+      }),
     };
   }
 
-  // ===== Hybrid =====
-  if (requestedMode === "hybrid") {
-    try {
-      const aiResults = await findMentorMatchesOpenAI(params);
-      if (Array.isArray(aiResults) && aiResults.length > 0) {
-        return {
-          results: aiResults,
-          meta: {
-            requestedMode,
-            modeUsed: "openai",
-            fallbackUsed: false,
-            reason: "OK",
-          },
-        };
-      }
-
-      const localResults = await findMentorMatchesLocal(params);
+  // -------- OPENAI --------
+  if (mode === "openai") {
+    // لو ما في key، ما بنفجر السيرفر، بنرجع نتائج فاضية + سبب واضح
+    if (!isOpenAIReady()) {
       return {
-        results: localResults,
-        meta: {
+        results: [],
+        meta: metaBase({
           requestedMode,
-          modeUsed: "local",
-          fallbackUsed: true,
-          reason: "OPENAI_NO_RESULTS",
-        },
+          modeUsed: "openai",
+          fallbackUsed: false,
+          reason: "NO_KEY",
+        }),
       };
-    } catch (err) {
-      const localResults = await findMentorMatchesLocal(params);
+    }
+
+    try {
+      const results = await findMentorMatchesOpenAI(params);
       return {
-        results: localResults,
-        meta: {
+        results: Array.isArray(results) ? results : [],
+        meta: metaBase({
           requestedMode,
-          modeUsed: "local",
-          fallbackUsed: true,
+          modeUsed: "openai",
+          fallbackUsed: false,
+          reason: results && results.length ? "OK" : "OPENAI_EMPTY",
+        }),
+      };
+    } catch (e) {
+      console.log("OPENAI mode failed:", e?.message || e);
+      return {
+        results: [],
+        meta: metaBase({
+          requestedMode,
+          modeUsed: "openai",
+          fallbackUsed: false,
           reason: "OPENAI_ERROR",
-        },
+        }),
       };
     }
   }
 
-  // ===== Local (default) =====
+  // -------- HYBRID --------
+  // OpenAI ثم fallback إلى Local إذا فشل/فاضي/ما في key
+  if (mode === "hybrid") {
+    if (!isOpenAIReady()) {
+      const local = await findMentorMatchesLocal(params);
+      return {
+        results: local,
+        meta: metaBase({
+          requestedMode,
+          modeUsed: "local",
+          fallbackUsed: true,
+          reason: "NO_KEY",
+        }),
+      };
+    }
+
+    try {
+      const ai = await findMentorMatchesOpenAI(params);
+      if (Array.isArray(ai) && ai.length > 0) {
+        return {
+          results: ai,
+          meta: metaBase({
+            requestedMode,
+            modeUsed: "openai",
+            fallbackUsed: false,
+            reason: "OK",
+          }),
+        };
+      }
+
+      const local = await findMentorMatchesLocal(params);
+      return {
+        results: local,
+        meta: metaBase({
+          requestedMode,
+          modeUsed: "local",
+          fallbackUsed: true,
+          reason: "OPENAI_EMPTY",
+        }),
+      };
+    } catch (e) {
+      console.log("HYBRID: OpenAI failed -> fallback local:", e?.message || e);
+      const local = await findMentorMatchesLocal(params);
+      return {
+        results: local,
+        meta: metaBase({
+          requestedMode,
+          modeUsed: "local",
+          fallbackUsed: true,
+          reason: "OPENAI_ERROR",
+        }),
+      };
+    }
+  }
+
+  // -------- SAFETY FALLBACK --------
   const results = await findMentorMatchesLocal(params);
   return {
     results,
-    meta: {
+    meta: metaBase({
       requestedMode,
       modeUsed: "local",
-      fallbackUsed: false,
+      fallbackUsed: true,
       reason: "OK",
-    },
+    }),
   };
 }
 

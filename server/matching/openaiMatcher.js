@@ -14,6 +14,10 @@ const { cosineSimilarity, buildMatchScore } = require("./scoreUtils");
  * - embedding(skillQuery)
  * - cosine similarity with each mentor skill embedding
  * - batch-save embeddings per mentor (1 write max)
+ *
+ * NOTE:
+ * - If OpenAI isn't available (no key / error), getEmbedding returns null,
+ *   so this returns [] and HYBRID will fallback to local.
  */
 async function findMentorMatchesOpenAI({
   userId,
@@ -22,7 +26,8 @@ async function findMentorMatchesOpenAI({
   userAvailability,
 }) {
   const skillToMatch = String(skillQuery || "").trim();
-  const normalizedDesiredLevel = String(level || "Beginner");
+  const normalizedDesiredLevel =
+    String(level || "Beginner").trim() || "Beginner";
   if (!skillToMatch) return [];
 
   const requestingUser = await User.findById(userId).lean();
@@ -35,8 +40,11 @@ async function findMentorMatchesOpenAI({
 
   if (!mentorsRaw.length) return [];
 
+  // ✅ SAFE: may return null if no key or OpenAI error
   const queryEmbedding = await getEmbedding(skillToMatch);
-  if (!queryEmbedding) return [];
+  if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0) {
+    return [];
+  }
 
   const results = [];
   const studentGoals = Array.isArray(requestingUser.skillsToLearn)
@@ -68,14 +76,14 @@ async function findMentorMatchesOpenAI({
 
       // fetch embedding only if missing
       if (!Array.isArray(emb) || emb.length === 0) {
-        try {
-          emb = await getEmbedding(skillObj.name);
-          if (emb) {
-            skillObj.embedding = emb;
-            changed = true;
-          }
-        } catch {
-          continue; // ignore single skill failure
+        const fresh = await getEmbedding(skillObj.name);
+        if (Array.isArray(fresh) && fresh.length > 0) {
+          emb = fresh;
+          skillObj.embedding = fresh;
+          changed = true;
+        } else {
+          // can't embed this skill => skip it (do not fail whole mentor)
+          continue;
         }
       }
 
@@ -93,12 +101,12 @@ async function findMentorMatchesOpenAI({
           { _id: mentor._id },
           { $set: { skillsToTeach: updatedTeachSkills } }
         );
-      } catch {
-        /* silent fail (non-critical) */
+      } catch (e) {
+        // silent fail (non-critical)
       }
     }
 
-    // threshold guard
+    // threshold guard (tuneable)
     if (!bestSkill || bestSim < 0.78) continue;
 
     const levelScore = computeLevelCompatibility(
@@ -132,7 +140,11 @@ async function findMentorMatchesOpenAI({
         level: bestSkill.level || "Not specified",
         similarityScore: bestSim,
       },
-      skillsToTeach: teachSkills,
+      // return mentor skills WITHOUT embeddings (clean payload)
+      skillsToTeach: teachSkills.map((s) => ({
+        name: s.name,
+        level: s.level || "Not specified",
+      })),
       availabilitySlots: mentorAvailability,
     });
   }

@@ -1,4 +1,3 @@
-// server/models/User.js
 const mongoose = require("mongoose");
 
 const AvailabilitySlotSchema = new mongoose.Schema(
@@ -33,16 +32,15 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
 
-    // ✅ NEW format: [{name, level}]
-    // (server route still accepts old string[] too)
     skillsToLearn: { type: [SkillLearnSchema], default: [] },
-
     skillsToTeach: { type: [SkillTeachSchema], default: [] },
 
+    // 🎮 Gamification
     points: { type: Number, default: 0 },
     xp: { type: Number, default: 0 },
     streak: { type: Number, default: 0 },
 
+    // ⭐ Ratings
     avgRating: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },
 
