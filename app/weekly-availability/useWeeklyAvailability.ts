@@ -9,11 +9,14 @@ import {
 } from "../../lib/api";
 
 /**
+ * Local key for "last saved" timestamp (used by Home + Weekly Availability)
+ */
+const WEEKLY_AVAIL_LAST_SAVED_KEY = "weeklyAvailability_lastSavedAt_v1";
+
+/**
  * Sort slots by day, then time
  */
-export function sortAvailability(
-  slots: AvailabilitySlot[]
-): AvailabilitySlot[] {
+export function sortAvailability(slots: AvailabilitySlot[]): AvailabilitySlot[] {
   return [...slots].sort((a, b) => {
     if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
     return a.from.localeCompare(b.from);
@@ -53,6 +56,25 @@ function slotsKey(slots: AvailabilitySlot[]): string {
     .join(";");
 }
 
+async function readLastSavedAt(): Promise<number | null> {
+  try {
+    const raw = await AsyncStorage.getItem(WEEKLY_AVAIL_LAST_SAVED_KEY);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeLastSavedAt(ts: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(WEEKLY_AVAIL_LAST_SAVED_KEY, String(ts));
+  } catch {
+    // ignore
+  }
+}
+
 export type UserProfile = {
   _id: string;
   fullName: string;
@@ -69,11 +91,15 @@ type UseWeeklyAvailabilityResult = {
   saving: boolean;
   errorText: string | null;
   hasChanges: boolean;
+  lastSavedAt: number | null;
+
   reload: () => Promise<void>;
   save: () => Promise<boolean>;
+
   updateAvailability: (
     updater: (prev: AvailabilitySlot[]) => AvailabilitySlot[]
   ) => void;
+
   setErrorText: (t: string | null) => void;
 };
 
@@ -85,6 +111,8 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
 
   /**
    * Baseline snapshot to detect unsaved changes
@@ -103,9 +131,14 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
       setLoading(true);
       setErrorText(null);
 
+      // load lastSavedAt (fast + local)
+      const savedTs = await readLastSavedAt();
+      setLastSavedAt(savedTs);
+
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/login" as any);
+        // ✅ keep consistent with your auth group routes
+        router.replace("/(auth)/login" as any);
         return;
       }
 
@@ -115,11 +148,18 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
       setUser(data);
       setAvailability(normalized);
       baselineKeyRef.current = slotsKey(normalized);
+
+      // If user already has availability from backend but no local timestamp yet,
+      // set a helpful baseline timestamp once (not critical, but improves UX).
+      if (!savedTs && normalized.length > 0) {
+        const now = Date.now();
+        setLastSavedAt(now);
+        await writeLastSavedAt(now);
+      }
     } catch (err: any) {
       console.log("weekly-availability / load error:", err);
       setErrorText(
-        err?.message ||
-          "We couldn’t load your availability. Please try again."
+        err?.message || "We couldn’t load your availability. Please try again."
       );
     } finally {
       setLoading(false);
@@ -143,6 +183,7 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
    * Save changes to backend
    */
   const save = useCallback(async () => {
+    // ✅ prevents double taps + saves only when needed
     if (saving || !hasChanges) return false;
 
     try {
@@ -150,7 +191,7 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/login" as any);
+        router.replace("/(auth)/login" as any);
         return false;
       }
 
@@ -161,20 +202,22 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
         normalized
       )) as UserProfile;
 
-      const updatedNormalized = normalizeSlots(
-        updated.availabilitySlots || []
-      );
+      const updatedNormalized = normalizeSlots(updated.availabilitySlots || []);
 
       setUser(updated);
       setAvailability(updatedNormalized);
       baselineKeyRef.current = slotsKey(updatedNormalized);
 
+      // ✅ write "last saved" timestamp for Home + other screens
+      const now = Date.now();
+      setLastSavedAt(now);
+      await writeLastSavedAt(now);
+
       return true;
     } catch (err: any) {
       console.log("weekly-availability / save error:", err);
       setErrorText(
-        err?.message ||
-          "Something went wrong while saving your availability."
+        err?.message || "Something went wrong while saving your availability."
       );
       return false;
     } finally {
@@ -189,6 +232,8 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
     saving,
     errorText,
     hasChanges,
+    lastSavedAt,
+
     reload,
     save,
     updateAvailability,

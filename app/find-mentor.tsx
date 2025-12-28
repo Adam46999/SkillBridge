@@ -13,12 +13,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import type { MatchingMode } from "../lib/api";
 import {
   AvailabilitySlot,
   MentorMatch,
   SkillLearn,
-  SkillTeach,
   getMe,
   getMentorMatches,
 } from "../lib/api";
@@ -30,10 +30,7 @@ type User = {
   points: number;
   xp: number;
   streak: number;
-
-  // ✅ FIX: server returns objects [{name, level}]
   skillsToLearn?: SkillLearn[];
-  skillsToTeach?: SkillTeach[];
   availabilitySlots?: AvailabilitySlot[];
 };
 
@@ -51,7 +48,7 @@ const MODES: { value: MatchingMode; label: string; hint: string }[] = [
   { value: "hybrid", label: "Hybrid", hint: "OpenAI → fallback to Local" },
 ];
 
-const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 export default function FindMentorScreen() {
   const router = useRouter();
@@ -61,13 +58,10 @@ export default function FindMentorScreen() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  // store selected skill by NAME (string)
   const [selectedSkill, setSelectedSkill] = useState<string>("");
   const [customSkill, setCustomSkill] = useState<string>("");
   const [selectedLevel, setSelectedLevel] = useState<LevelOption>("Beginner");
   const [useMyAvailability, setUseMyAvailability] = useState<boolean>(true);
-
-  // ✅ Matching mode switch
   const [mode, setMode] = useState<MatchingMode>("local");
 
   const [matches, setMatches] = useState<MentorMatch[]>([]);
@@ -83,7 +77,7 @@ export default function FindMentorScreen() {
 
         const token = await AsyncStorage.getItem("token");
         if (!token) {
-          router.replace("/login");
+          router.replace("/(auth)/login" as any);
           return;
         }
 
@@ -94,7 +88,6 @@ export default function FindMentorScreen() {
 
         setUser(userFromApi);
 
-        // ✅ pick first learning skill name if exists
         const skills = userFromApi.skillsToLearn ?? [];
         if (skills.length > 0 && skills[0]?.name) {
           setSelectedSkill(skills[0].name);
@@ -120,7 +113,6 @@ export default function FindMentorScreen() {
 
   const learningSkills = useMemo(() => {
     const arr = user?.skillsToLearn ?? [];
-    // return only valid names
     return arr
       .map((s) => ({
         name: String(s?.name || "").trim(),
@@ -141,7 +133,6 @@ export default function FindMentorScreen() {
 
   const canSearch = !!effectiveSkill && !loadingMatches && !loadingUser;
 
-  // ---- Call backend to get matches ----
   const handleSearch = async () => {
     if (!canSearch) return;
 
@@ -153,7 +144,7 @@ export default function FindMentorScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/login");
+        router.replace("/(auth)/login" as any);
         return;
       }
 
@@ -179,6 +170,8 @@ export default function FindMentorScreen() {
 
   const handleBack = () => router.back();
 
+  // ✅ NEW: open mentor profile
+
   if (loadingUser && !user && !errorText) {
     return (
       <View style={styles.loadingScreen}>
@@ -202,7 +195,7 @@ export default function FindMentorScreen() {
       >
         {/* Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={handleBack}>
+          <TouchableOpacity onPress={handleBack} activeOpacity={0.85}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
         </View>
@@ -235,6 +228,7 @@ export default function FindMentorScreen() {
                   key={opt.value}
                   style={[styles.levelChip, active && styles.levelChipActive]}
                   onPress={() => setMode(opt.value)}
+                  activeOpacity={0.85}
                 >
                   <Text
                     style={[
@@ -288,6 +282,7 @@ export default function FindMentorScreen() {
                         styles.skillChip,
                         active && styles.skillChipActive,
                       ]}
+                      activeOpacity={0.85}
                     >
                       <Text
                         style={[
@@ -341,6 +336,7 @@ export default function FindMentorScreen() {
                   key={opt.value}
                   style={[styles.levelChip, active && styles.levelChipActive]}
                   onPress={() => setSelectedLevel(opt.value)}
+                  activeOpacity={0.85}
                 >
                   <Text
                     style={[
@@ -367,6 +363,7 @@ export default function FindMentorScreen() {
           <TouchableOpacity
             style={styles.toggleRow}
             onPress={() => setUseMyAvailability((prev) => !prev)}
+            activeOpacity={0.85}
           >
             <View
               style={[
@@ -418,6 +415,7 @@ export default function FindMentorScreen() {
           ]}
           onPress={handleSearch}
           disabled={!canSearch}
+          activeOpacity={0.85}
         >
           {loadingMatches ? (
             <ActivityIndicator color="#ffffff" />
@@ -487,10 +485,23 @@ export default function FindMentorScreen() {
                 </Text>
               )}
 
-              <TouchableOpacity style={styles.matchActionButton}>
-                <Text style={styles.matchActionText}>
-                  View profile (coming soon)
-                </Text>
+              {/* ✅ FIX: add onPress */}
+              <TouchableOpacity
+                style={styles.matchActionButton}
+                activeOpacity={0.85}
+                onPress={() =>
+                  router.push({
+                    pathname: "/sessions/request",
+                    params: {
+                      mentorId: m.mentorId,
+                      mentorName: m.fullName,
+                      skill: m.mainMatchedSkill?.name,
+                      level: m.mainMatchedSkill?.level,
+                    },
+                  } as any)
+                }
+              >
+                <Text style={styles.matchActionText}>Request session</Text>
               </TouchableOpacity>
             </View>
           ))}
@@ -826,8 +837,8 @@ const styles = StyleSheet.create({
   matchActionText: {
     color: "#E5E7EB",
     fontSize: 12,
+    fontWeight: "600",
   },
-
   modeHint: {
     marginTop: 10,
     color: "#9CA3AF",
