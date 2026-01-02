@@ -1,123 +1,97 @@
-// app/sessions/screens/SessionsScreen.tsx
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   RefreshControl,
-  ScrollView,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 
-import { getMe } from "../../../lib/api";
-import { listMySessions, SessionDTO } from "../api/sessionsApi";
-import SessionCard from "../components/SessionCard";
+import type { SessionDTO } from "../api/sessionsApi";
+import SessionsHeader from "./(components)/SessionsHeader";
+import { useRowRenderer } from "./(components)/SessionsRowRenderer";
+import {
+  buildGroupedRows,
+  filterSessionsByStatus,
+  type Row,
+  type StatusFilter,
+} from "./(components)/SessionsRows";
+import { useSessionsData, type Scope } from "./(hooks)/useSessionsData";
 
-type Scope = "upcoming" | "past" | "all";
+function normalize(s: any) {
+  return String(s || "")
+    .toLowerCase()
+    .trim();
+}
+
+function sessionMatchesQuery(s: SessionDTO, q: string) {
+  const query = normalize(q);
+  if (!query) return true;
+
+  const hay = [s.skill, s.level, s.status, s.note, s.feedback, s.scheduledAt]
+    .map((x) => normalize(x))
+    .join(" | ");
+
+  return hay.includes(query);
+}
 
 export default function SessionsScreen() {
   const router = useRouter();
 
   const [scope, setScope] = useState<Scope>("upcoming");
-  const [token, setToken] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [query, setQuery] = useState("");
 
-  const [sessions, setSessions] = useState<SessionDTO[]>([]);
-  const [loading, setLoading] = useState(true); // initial load
-  const [loadingList, setLoadingList] = useState(false); // chip switching
-  const [refreshing, setRefreshing] = useState(false);
-  const [errorText, setErrorText] = useState<string | null>(null);
+  const {
+    token,
+    currentUserId,
+    sessions,
+    loading,
+    loadingList,
+    refreshing,
+    errorText,
+    load,
+    onRefresh,
+  } = useSessionsData(scope);
 
-  const scopeLabel = useMemo(() => {
-    if (scope === "upcoming") return "Upcoming sessions";
-    if (scope === "past") return "Past sessions";
-    return "All sessions";
-  }, [scope]);
+  // 1) search filter (NEW ✅)
+  const searchedSessions = useMemo(() => {
+    const q = query.trim();
+    if (!q) return sessions;
+    return (Array.isArray(sessions) ? sessions : []).filter((s) =>
+      sessionMatchesQuery(s, q)
+    );
+  }, [sessions, query]);
 
-  const load = useCallback(
-    async (opts?: { silent?: boolean; listOnly?: boolean }) => {
-      const silent = !!opts?.silent;
-      const listOnly = !!opts?.listOnly;
-
-      try {
-        setErrorText(null);
-
-        if (!silent && !listOnly) setLoading(true);
-        if (listOnly) setLoadingList(true);
-
-        const t = token ?? (await AsyncStorage.getItem("token"));
-        if (!token) setToken(t);
-
-        if (!t) {
-          router.replace("/(auth)/login" as any);
-          return;
-        }
-
-        // only fetch me once (unless missing)
-        if (!currentUserId) {
-          const me: any = await getMe(t);
-          setCurrentUserId(me?.user?._id ?? me?._id ?? null);
-        }
-
-        const data = await listMySessions(t, { scope });
-        setSessions(data);
-      } catch (e: any) {
-        setErrorText(e?.message || "Failed to load sessions.");
-      } finally {
-        if (!silent && !listOnly) setLoading(false);
-        if (listOnly) setLoadingList(false);
-        setRefreshing(false);
-      }
-    },
-    [router, scope, token, currentUserId]
+  // 2) status filter (existing ✅)
+  const filteredSessions = useMemo(
+    () => filterSessionsByStatus(searchedSessions, statusFilter),
+    [searchedSessions, statusFilter]
   );
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 3) grouped rows (existing ✅)
+  const rows = useMemo<Row[]>(
+    () => buildGroupedRows(filteredSessions),
+    [filteredSessions]
+  );
 
-  // when scope changes => load list only (no full-screen loader)
-  useEffect(() => {
-    if (!token) return; // wait initial token
-    load({ listOnly: true, silent: true });
-  }, [scope, token, load]);
+  const empty = useMemo(
+    () => !loading && !errorText && filteredSessions.length === 0,
+    [loading, errorText, filteredSessions.length]
+  );
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    load({ silent: true });
-  };
+  const onChanged = useCallback(async () => {
+    await load({ silent: true, listOnly: true });
+  }, [load]);
 
-  const ScopeChip = ({ v }: { v: Scope }) => {
-    const active = v === scope;
-    return (
-      <TouchableOpacity
-        onPress={() => setScope(v)}
-        activeOpacity={0.85}
-        style={{
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: active ? "#F97316" : "#1E293B",
-          backgroundColor: active ? "#0B1120" : "#020617",
-        }}
-      >
-        <Text
-          style={{
-            color: active ? "#FED7AA" : "#E5E7EB",
-            fontWeight: "900",
-            fontSize: 12,
-            textTransform: "capitalize",
-          }}
-        >
-          {v}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  const renderRow = useRowRenderer({
+    token,
+    currentUserId,
+    onChanged,
+  });
+
+  const keyExtractor = useCallback((r: Row) => r.key, []);
 
   if (loading) {
     return (
@@ -137,10 +111,100 @@ export default function SessionsScreen() {
     );
   }
 
+  if (empty && !errorText) {
+    const msg =
+      scope === "upcoming"
+        ? "No upcoming sessions yet."
+        : scope === "past"
+        ? "No past sessions yet."
+        : "No sessions yet.";
+
+    const hint = query.trim()
+      ? "Try clearing search or changing filters."
+      : statusFilter !== "all"
+      ? `Try switching the status filter (currently: ${statusFilter}).`
+      : "When you request a session from a mentor, it’ll show up here.";
+
+    return (
+      <View style={{ flex: 1, backgroundColor: "#020617" }}>
+        <SessionsHeader
+          scope={scope}
+          setScope={setScope}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          sessions={sessions}
+          filteredCount={filteredSessions.length}
+          loadingList={loadingList}
+          errorText={errorText}
+          onRetry={() => load({ silent: true, listOnly: true })}
+          query={query}
+          setQuery={setQuery}
+          // ✅ safest: route موجود عندك حسب الكود السابق
+          onFindMentor={() => router.push("/find-mentor" as any)}
+          // ✅ خليها اختياري… إذا عندك روت جاهز مررّه
+          // onRequestSession={() => router.push("/sessions/request" as any)}
+        />
+
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <View
+            style={{
+              backgroundColor: "#0B1120",
+              borderWidth: 1,
+              borderColor: "#1E293B",
+              borderRadius: 14,
+              padding: 14,
+            }}
+          >
+            <Text style={{ color: "#E5E7EB", fontWeight: "900" }}>{msg}</Text>
+            <Text style={{ color: "#94A3B8", marginTop: 6 }}>{hint}</Text>
+
+            <View style={{ height: 12 }} />
+
+            <View style={{ borderRadius: 999, overflow: "hidden" }}>
+              <Text
+                onPress={() => router.push("/find-mentor" as any)}
+                style={{
+                  textAlign: "center",
+                  paddingVertical: 10,
+                  backgroundColor: "#F97316",
+                  borderWidth: 1,
+                  borderColor: "#FB923C",
+                  color: "#111827",
+                  fontWeight: "900",
+                }}
+              >
+                Find a mentor
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: "#020617" }}>
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+      <FlatList
+        data={rows}
+        keyExtractor={keyExtractor}
+        renderItem={renderRow}
+        ListHeaderComponent={
+          <SessionsHeader
+            scope={scope}
+            setScope={setScope}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            sessions={sessions}
+            filteredCount={filteredSessions.length}
+            loadingList={loadingList}
+            errorText={errorText}
+            onRetry={() => load({ silent: true, listOnly: true })}
+            query={query}
+            setQuery={setQuery}
+            onFindMentor={() => router.push("/find-mentor" as any)}
+            // onRequestSession={() => router.push("/sessions/request" as any)}
+          />
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -148,156 +212,9 @@ export default function SessionsScreen() {
             tintColor="#F97316"
           />
         }
-      >
-        {/* Header */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.85}>
-            <Text style={{ color: "#60A5FA", fontWeight: "900" }}>← Back</Text>
-          </TouchableOpacity>
-
-          <Text style={{ color: "#E5E7EB", fontWeight: "900", fontSize: 16 }}>
-            Sessions
-          </Text>
-
-          <View style={{ width: 54 }} />
-        </View>
-
-        {/* Subtitle */}
-        <Text style={{ color: "#94A3B8", marginTop: 8, fontWeight: "700" }}>
-          {scopeLabel}
-        </Text>
-
-        {/* Scope chips */}
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 8,
-            marginTop: 14,
-            flexWrap: "wrap",
-          }}
-        >
-          <ScopeChip v="upcoming" />
-          <ScopeChip v="past" />
-          <ScopeChip v="all" />
-        </View>
-
-        {/* Error */}
-        {errorText ? (
-          <View
-            style={{
-              marginTop: 14,
-              backgroundColor: "#451A1A",
-              borderRadius: 12,
-              padding: 12,
-              borderWidth: 1,
-              borderColor: "#FCA5A5",
-            }}
-          >
-            <Text style={{ color: "#FECACA", fontWeight: "900" }}>
-              Couldn’t load sessions
-            </Text>
-            <Text style={{ color: "#FECACA", marginTop: 6 }}>{errorText}</Text>
-
-            <TouchableOpacity
-              onPress={() => load({ silent: true })}
-              activeOpacity={0.85}
-              style={{
-                marginTop: 10,
-                alignSelf: "flex-start",
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 999,
-                backgroundColor: "#B91C1C",
-              }}
-            >
-              <Text style={{ color: "#FEE2E2", fontWeight: "900" }}>
-                Try again
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {/* List header row */}
-        <View
-          style={{
-            marginTop: 16,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text style={{ color: "#E5E7EB", fontWeight: "900", fontSize: 14 }}>
-            Results
-          </Text>
-
-          {loadingList ? (
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-            >
-              <ActivityIndicator />
-              <Text style={{ color: "#94A3B8", fontWeight: "900" }}>
-                Updating…
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Sessions */}
-        <View style={{ marginTop: 12, gap: 10 }}>
-          {sessions.length === 0 ? (
-            <View
-              style={{
-                backgroundColor: "#0B1120",
-                borderWidth: 1,
-                borderColor: "#1E293B",
-                borderRadius: 14,
-                padding: 14,
-              }}
-            >
-              <Text style={{ color: "#E5E7EB", fontWeight: "900" }}>
-                No sessions yet
-              </Text>
-              <Text style={{ color: "#94A3B8", marginTop: 6 }}>
-                When you request a session from a mentor, it’ll show up here.
-              </Text>
-
-              <TouchableOpacity
-                onPress={() => router.push("/find-mentor" as any)}
-                activeOpacity={0.85}
-                style={{
-                  marginTop: 12,
-                  borderRadius: 999,
-                  paddingVertical: 10,
-                  alignItems: "center",
-                  backgroundColor: "#F97316",
-                  borderWidth: 1,
-                  borderColor: "#FB923C",
-                }}
-              >
-                <Text style={{ color: "#111827", fontWeight: "900" }}>
-                  Find a mentor
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            sessions.map((s) => (
-              <SessionCard
-                key={s._id}
-                session={s}
-                token={token}
-                currentUserId={currentUserId}
-                onChanged={() => load({ silent: true })}
-              />
-            ))
-          )}
-        </View>
-      </ScrollView>
+        contentContainerStyle={{ paddingBottom: 20 }}
+        keyboardShouldPersistTaps="handled"
+      />
     </View>
   );
 }

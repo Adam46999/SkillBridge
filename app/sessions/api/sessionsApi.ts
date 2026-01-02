@@ -5,26 +5,20 @@ export type SessionStatus =
   | "requested"
   | "accepted"
   | "rejected"
-  | "cancelled"
+  | "cancelled" // UI/internal
   | "completed";
 
 export type SessionDTO = {
   _id: string;
-
   mentorId: string;
   learnerId: string;
-
   skill: string;
   level: string;
-
   scheduledAt: string; // ISO
   status: SessionStatus;
-
   note?: string;
-
   rating?: number | null;
   feedback?: string;
-
   createdAt?: string;
   updatedAt?: string;
 };
@@ -50,6 +44,41 @@ async function handle(res: Response) {
   return data;
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit, ms = 12000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (e: any) {
+    if (e?.name === "AbortError") {
+      throw new Error("Request timed out. Check API_URL / server.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+// ✅ UI -> API spelling (backend usually uses "canceled")
+function statusForApi(status: SessionStatus) {
+  return status === "cancelled" ? "canceled" : status;
+}
+
+// ✅ API -> UI spelling
+function statusFromApi(status: any): SessionStatus {
+  if (status === "canceled") return "cancelled";
+  return status as SessionStatus;
+}
+
+function normalizeSessionFromApi(s: any): SessionDTO {
+  return {
+    ...s,
+    status: statusFromApi(s?.status),
+  } as SessionDTO;
+}
+
 export async function listMySessions(
   token: string,
   params?: {
@@ -61,19 +90,26 @@ export async function listMySessions(
   const q = new URLSearchParams();
   if (params?.role) q.set("role", params.role);
   if (params?.scope) q.set("scope", params.scope);
-  if (params?.statuses?.length) q.set("statuses", params.statuses.join(","));
+  if (params?.statuses?.length) {
+    q.set("statuses", params.statuses.map(statusForApi).join(","));
+  }
 
   const url = `${API_URL}/api/sessions/mine${
     q.toString() ? `?${q.toString()}` : ""
   }`;
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    12000
+  );
 
   const data = await handle(res);
-  return Array.isArray(data?.sessions) ? (data.sessions as SessionDTO[]) : [];
+  const arr = Array.isArray(data?.sessions) ? data.sessions : Array.isArray(data) ? data : [];
+  return arr.map(normalizeSessionFromApi);
 }
 
 export async function requestSession(
@@ -86,17 +122,22 @@ export async function requestSession(
     note?: string;
   }
 ): Promise<SessionDTO> {
-  const res = await fetch(`${API_URL}/api/sessions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/sessions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    12000
+  );
 
   const data = await handle(res);
-  return (data?.session ?? data) as SessionDTO;
+  const s = data?.session ?? data;
+  return normalizeSessionFromApi(s);
 }
 
 export async function updateSessionStatus(
@@ -104,34 +145,46 @@ export async function updateSessionStatus(
   sessionId: string,
   status: SessionStatus
 ): Promise<SessionDTO> {
-  const res = await fetch(`${API_URL}/api/sessions/${sessionId}/status`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  // ✅ log صح (جوا الفنكشن) لو بدك
+  // console.log("[sessions] update status", sessionId, "=>", status);
+
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/sessions/${sessionId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status: statusForApi(status) }),
     },
-    body: JSON.stringify({ status }),
-  });
+    12000
+  );
 
   const data = await handle(res);
-  return (data?.session ?? data) as SessionDTO;
+  const s = data?.session ?? data;
+  return normalizeSessionFromApi(s);
 }
 
-// ✅ NEW: rate session
 export async function rateSession(
   token: string,
   sessionId: string,
   body: { rating: number; feedback?: string }
 ): Promise<SessionDTO> {
-  const res = await fetch(`${API_URL}/api/sessions/${sessionId}/rate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/sessions/${sessionId}/rate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    12000
+  );
 
   const data = await handle(res);
-  return (data?.session ?? data) as SessionDTO;
+  const s = data?.session ?? data;
+  return normalizeSessionFromApi(s);
 }

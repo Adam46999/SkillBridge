@@ -1,6 +1,8 @@
 // app/mentor/[id].tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { getOrCreateConversation } from "../../lib/chat/api";
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -215,8 +217,31 @@ export default function MentorProfileScreen() {
     } as any);
   };
 
-  const handleMessage = () => {
-    // TODO later
+  const handleMessage = async () => {
+    try {
+      if (!mentor?.id) return;
+
+      const token = await AsyncStorage.getItem("token");
+      if (!token) {
+        router.replace("/(auth)/login" as any);
+        return;
+      }
+
+      const conversationId = await getOrCreateConversation(token, mentor.id);
+
+      // ✅ هذا السطر هو الحل
+      if (!conversationId || typeof conversationId !== "string") {
+        console.warn("Invalid conversationId, aborting chat open");
+        return;
+      }
+
+      router.push({
+        pathname: "/(tabs)/chats/[conversationId]",
+        params: { conversationId },
+      });
+    } catch (e: any) {
+      console.warn("Open chat failed:", e?.message || e);
+    }
   };
 
   if (loading && !mentor && !errorText) {

@@ -1,0 +1,1648 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: server.js, routes/**, models/**, services/**, middleware/**, controllers/**, config/**
+- Files matching these patterns are excluded: node_modules/**, **/*.log, **/*.map, **/*.env, **/*.json, package-lock.json, yarn.lock, pnpm-lock.yaml, README.md
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+models/Conversation.js
+models/Message.js
+models/PointTransaction.js
+models/Rating.js
+models/Session.js
+models/User.js
+routes/chat.js
+routes/points.routes.js
+routes/ratings.js
+routes/sessions.js
+routes/users.js
+server.js
+services/matchingService.js
+services/pointsService.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="models/Conversation.js">
+// server/models/Conversation.js
+const mongoose = require("mongoose");
+
+const ConversationSchema = new mongoose.Schema(
+  {
+    // 1-to-1 only
+    participants: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      required: true,
+      validate: {
+        validator(arr) {
+          return Array.isArray(arr) && arr.length === 2;
+        },
+        message: "Conversation must have exactly 2 participants",
+      },
+      index: true,
+    },
+
+    lastMessageText: { type: String, default: "" },
+    lastMessageAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+// Helpful indexes for inbox queries
+ConversationSchema.index({ participants: 1, lastMessageAt: -1 });
+
+module.exports = mongoose.model("Conversation", ConversationSchema);
+</file>
+
+<file path="models/Message.js">
+// server/models/Message.js
+const mongoose = require("mongoose");
+
+const MessageSchema = new mongoose.Schema(
+  {
+    conversationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Conversation",
+      required: true,
+      index: true,
+    },
+
+    senderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
+    text: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 4000,
+    },
+
+    // simple read receipts
+    readBy: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      default: [],
+    },
+  },
+  { timestamps: true }
+);
+
+MessageSchema.index({ conversationId: 1, createdAt: -1 });
+
+module.exports = mongoose.model("Message", MessageSchema);
+</file>
+
+<file path="models/PointTransaction.js">
+// server/models/PointTransaction.js
+const mongoose = require("mongoose");
+
+const PointTransactionSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
+    amount: {
+      type: Number,
+      required: true, // + or -
+    },
+
+    reason: {
+      type: String,
+      required: true, // e.g. "teach_session", "learn_session"
+    },
+
+    sessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Session",
+      default: null,
+    },
+
+    balanceAfter: {
+      type: Number,
+      required: true,
+    },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("PointTransaction", PointTransactionSchema);
+</file>
+
+<file path="models/Rating.js">
+// server/models/Rating.js
+const mongoose = require("mongoose");
+
+const RatingSchema = new mongoose.Schema(
+  {
+    sessionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Session",
+      required: true,
+      unique: true, // rating واحد لكل session
+    },
+
+    fromUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    toUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    score: {
+      type: Number,
+      min: 1,
+      max: 5,
+      required: true,
+    },
+
+    comment: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("Rating", RatingSchema);
+</file>
+
+<file path="models/Session.js">
+// server/models/Session.js
+const mongoose = require("mongoose");
+
+const SessionSchema = new mongoose.Schema(
+  {
+    // participants
+    mentorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    learnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    // what is the session about
+    skill: { type: String, required: true, trim: true },
+    level: { type: String, default: "Not specified", trim: true },
+
+    // scheduling
+    scheduledAt: { type: Date, required: true },
+
+    // lifecycle
+    status: {
+      type: String,
+      enum: ["requested", "accepted", "rejected", "cancelled", "completed"],
+      default: "requested",
+      index: true,
+    },
+
+    // optional notes
+    note: { type: String, default: "", trim: true },
+
+    // rating/feedback (optional for later)
+    rating: { type: Number, min: 1, max: 5, default: null },
+    feedback: { type: String, default: "", trim: true },
+  },
+  { timestamps: true }
+);
+
+// Helpful indexes
+SessionSchema.index({ mentorId: 1, scheduledAt: 1 });
+SessionSchema.index({ learnerId: 1, scheduledAt: 1 });
+
+module.exports = mongoose.model("Session", SessionSchema);
+</file>
+
+<file path="models/User.js">
+const mongoose = require("mongoose");
+
+const AvailabilitySlotSchema = new mongoose.Schema(
+  {
+    dayOfWeek: { type: Number, required: true, min: 0, max: 6 },
+    from: { type: String, required: true },
+    to: { type: String, required: true },
+  },
+  { _id: false }
+);
+
+const SkillTeachSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    level: { type: String, default: "Not specified" },
+    embedding: { type: [Number], default: undefined },
+  },
+  { _id: false }
+);
+
+const SkillLearnSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    level: { type: String, default: "Not specified" },
+  },
+  { _id: false }
+);
+
+const UserSchema = new mongoose.Schema(
+  {
+    fullName: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    passwordHash: { type: String, required: true },
+
+    skillsToLearn: { type: [SkillLearnSchema], default: [] },
+    skillsToTeach: { type: [SkillTeachSchema], default: [] },
+
+    // 🎮 Gamification
+    points: { type: Number, default: 0 },
+    xp: { type: Number, default: 0 },
+    streak: { type: Number, default: 0 },
+
+    // ⭐ Ratings
+    avgRating: { type: Number, default: 0 },
+    ratingCount: { type: Number, default: 0 },
+
+    availabilitySlots: { type: [AvailabilitySlotSchema], default: [] },
+
+    preferences: {
+      communicationModes: { type: [String], default: [] },
+      languages: { type: [String], default: [] },
+    },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("User", UserSchema);
+</file>
+
+<file path="routes/chat.js">
+// server/routes/chat.js
+const express = require("express");
+const mongoose = require("mongoose");
+
+const Conversation = require("../models/Conversation");
+const Message = require("../models/Message");
+const User = require("../models/User");
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(String(id));
+}
+
+function uniqTwoIds(a, b) {
+  const A = String(a);
+  const B = String(b);
+  if (!A || !B) return null;
+  if (A === B) return null;
+  return [A, B].sort();
+}
+
+function toPeerPublic(u) {
+  if (!u) return null;
+  return {
+    id: String(u._id),
+    fullName: u.fullName,
+    points: u.points,
+    xp: u.xp,
+    streak: u.streak,
+    avgRating: u.avgRating,
+    ratingCount: u.ratingCount,
+  };
+}
+
+function safeTrim(v) {
+  return String(v || "").trim();
+}
+
+module.exports = function chatRouter(authMiddleware) {
+  const router = express.Router();
+
+  // GET /api/chat/inbox  (+ unreadCount)
+  router.get("/inbox", authMiddleware, async (req, res) => {
+    try {
+      const me = String(req.userId);
+
+      const list = await Conversation.find({ participants: me })
+        .sort({ lastMessageAt: -1, updatedAt: -1 })
+        .limit(200)
+        .lean();
+
+      const convIds = list.map((c) => String(c._id));
+
+      // peers
+      const peerSet = new Set();
+      for (const c of list) {
+        const p = (c.participants || []).map(String);
+        const peerId = p.find((x) => x !== me);
+        if (peerId) peerSet.add(peerId);
+      }
+      const peerIds = Array.from(peerSet);
+
+      const peers = peerIds.length
+        ? await User.find({ _id: { $in: peerIds } })
+            .select("fullName points xp streak avgRating ratingCount")
+            .lean()
+        : [];
+      const peerMap = new Map(peers.map((p) => [String(p._id), p]));
+
+      // unread counts (aggregate)
+      let unreadMap = new Map();
+      if (convIds.length) {
+        const agg = await Message.aggregate([
+          {
+            $match: {
+              conversationId: {
+                $in: convIds.map((id) => new mongoose.Types.ObjectId(id)),
+              },
+              senderId: { $ne: new mongoose.Types.ObjectId(me) },
+              readBy: { $ne: new mongoose.Types.ObjectId(me) },
+            },
+          },
+          { $group: { _id: "$conversationId", cnt: { $sum: 1 } } },
+        ]);
+
+        unreadMap = new Map(
+          agg.map((x) => [String(x._id), Number(x.cnt || 0)])
+        );
+      }
+
+      const items = list.map((c) => {
+        const p = (c.participants || []).map(String);
+        const peerId = p.find((x) => x !== me);
+
+        return {
+          id: String(c._id),
+          peer: toPeerPublic(peerMap.get(String(peerId))),
+          lastMessageText: String(c.lastMessageText || ""),
+          lastMessageAt: c.lastMessageAt || null,
+          updatedAt: c.updatedAt || null,
+          createdAt: c.createdAt || null,
+          unreadCount: unreadMap.get(String(c._id)) || 0,
+        };
+      });
+
+      return res.json({ items });
+    } catch (err) {
+      console.error("CHAT INBOX ERROR:", err);
+      return res.status(500).json({ error: "Failed to load inbox" });
+    }
+  });
+
+  // POST /api/chat/conversation
+  router.post("/conversation", authMiddleware, async (req, res) => {
+    try {
+      const me = String(req.userId);
+      const peerId = safeTrim(req.body?.peerId);
+
+      if (!peerId) return res.status(400).json({ error: "peerId is required" });
+      if (!isValidObjectId(peerId))
+        return res.status(400).json({ error: "Invalid peerId" });
+
+      const pair = uniqTwoIds(me, peerId);
+      if (!pair) return res.status(400).json({ error: "Invalid peerId" });
+
+      const peer = await User.findById(peerId).select("_id").lean();
+      if (!peer) return res.status(404).json({ error: "User not found" });
+
+      const existing = await Conversation.findOne({
+        participants: { $all: pair },
+      })
+        .select("_id")
+        .lean();
+
+      if (existing) return res.json({ conversationId: String(existing._id) });
+
+      const conv = await Conversation.create({
+        participants: pair,
+        lastMessageText: "",
+        lastMessageAt: null,
+      });
+
+      return res.json({ conversationId: String(conv._id) });
+    } catch (err) {
+      console.error("GET/CREATE CONV ERROR:", err);
+      return res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  // GET /api/chat/:conversationId/messages
+  router.get("/:conversationId/messages", authMiddleware, async (req, res) => {
+    try {
+      const me = String(req.userId);
+      const conversationId = safeTrim(req.params.conversationId);
+
+      if (!isValidObjectId(conversationId))
+        return res.status(400).json({ error: "Invalid conversation id" });
+
+      const conv = await Conversation.findById(conversationId)
+        .select("participants")
+        .lean();
+      if (!conv)
+        return res.status(404).json({ error: "Conversation not found" });
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return res.status(403).json({ error: "Not allowed" });
+
+      const rawLimit = Number(req.query.limit);
+      const limit = Number.isFinite(rawLimit)
+        ? Math.max(1, Math.min(200, rawLimit))
+        : 50;
+
+      const beforeRaw = safeTrim(req.query.before);
+      const beforeDate = beforeRaw ? new Date(beforeRaw) : null;
+      const beforeOk = beforeDate && !Number.isNaN(beforeDate.getTime());
+
+      const q = { conversationId };
+      if (beforeOk) q.createdAt = { $lt: beforeDate };
+
+      const list = await Message.find(q)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean();
+
+      const items = list
+        .slice()
+        .reverse()
+        .map((m) => ({
+          id: String(m._id),
+          conversationId: String(m.conversationId),
+          senderId: String(m.senderId),
+          text: String(m.text || ""),
+          createdAt: m.createdAt,
+        }));
+
+      // mark fetched messages as read (best-effort)
+      await Message.updateMany(
+        { conversationId, senderId: { $ne: me }, readBy: { $ne: me } },
+        { $addToSet: { readBy: me } }
+      );
+
+      return res.json({ items });
+    } catch (err) {
+      console.error("GET MESSAGES ERROR:", err);
+      return res.status(500).json({ error: "Failed to load messages" });
+    }
+  });
+
+  // POST /api/chat/:conversationId/messages
+  router.post("/:conversationId/messages", authMiddleware, async (req, res) => {
+    try {
+      const me = String(req.userId);
+      const conversationId = safeTrim(req.params.conversationId);
+      const text = safeTrim(req.body?.text);
+
+      if (!text) return res.status(400).json({ error: "Text is required" });
+      if (!isValidObjectId(conversationId))
+        return res.status(400).json({ error: "Invalid conversation id" });
+
+      const conv = await Conversation.findById(conversationId);
+      if (!conv)
+        return res.status(404).json({ error: "Conversation not found" });
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return res.status(403).json({ error: "Not allowed" });
+
+      const msg = await Message.create({
+        conversationId,
+        senderId: me,
+        text,
+        readBy: [me],
+      });
+
+      conv.lastMessageText = text.slice(0, 200);
+      conv.lastMessageAt = msg.createdAt;
+      await conv.save();
+
+      return res.json({
+        message: {
+          id: String(msg._id),
+          conversationId: String(msg.conversationId),
+          senderId: String(msg.senderId),
+          text: String(msg.text || ""),
+          createdAt: msg.createdAt,
+        },
+      });
+    } catch (err) {
+      console.error("SEND MESSAGE ERROR:", err);
+      return res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  return router;
+};
+</file>
+
+<file path="routes/points.routes.js">
+// server/routes/points.routes.js
+const express = require("express");
+const PointTransaction = require("../models/PointTransaction");
+const { getBalance } = require("../services/pointsService");
+
+const router = express.Router();
+
+/**
+ * GET /api/points/balance
+ * returns: { balance: number }
+ */
+router.get("/balance", async (req, res) => {
+  try {
+    const balance = await getBalance(req.userId);
+    return res.json({ balance });
+  } catch (err) {
+    return res.status(400).json({ error: String(err.message || err) });
+  }
+});
+
+/**
+ * GET /api/points/transactions?limit=50
+ * returns: { items: PointTransaction[] }
+ */
+router.get("/transactions", async (req, res) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Number.isFinite(rawLimit)
+      ? Math.max(1, Math.min(200, rawLimit))
+      : 50;
+
+    const items = await PointTransaction.find({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select("amount reason sessionId balanceAfter createdAt");
+
+    return res.json({ items });
+  } catch (err) {
+    return res.status(400).json({ error: String(err.message || err) });
+  }
+});
+
+module.exports = router;
+</file>
+
+<file path="routes/ratings.js">
+// server/routes/ratings.js
+const express = require("express");
+const mongoose = require("mongoose");
+
+const Rating = require("../models/Rating");
+const Session = require("../models/Session");
+const User = require("../models/User");
+
+module.exports = function ratingsRouter(authMiddleware) {
+  const router = express.Router();
+
+  // POST /api/ratings
+  router.post("/", authMiddleware, async (req, res) => {
+    try {
+      const fromUserId = String(req.userId);
+      const { sessionId, score, comment } = req.body || {};
+
+      if (!sessionId || !score) {
+        return res.status(400).json({
+          error: "sessionId and score are required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        return res.status(400).json({ error: "Invalid session id" });
+      }
+
+      const s = await Session.findById(sessionId);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      if (s.status !== "completed") {
+        return res.status(400).json({
+          error: "You can rate only completed sessions",
+        });
+      }
+
+      const isLearner = String(s.learnerId) === fromUserId;
+      const isMentor = String(s.mentorId) === fromUserId;
+
+      if (!isLearner && !isMentor) {
+        return res.status(403).json({ error: "Not allowed" });
+      }
+
+      const toUserId = isLearner ? s.mentorId : s.learnerId;
+
+      const rating = await Rating.create({
+        sessionId,
+        fromUserId,
+        toUserId,
+        score,
+        comment: String(comment || "").trim(),
+      });
+
+      // ===== Gamification =====
+      const receiver = await User.findById(toUserId);
+
+      receiver.ratingCount += 1;
+      receiver.ratingAvg =
+        (receiver.ratingAvg * (receiver.ratingCount - 1) + score) /
+        receiver.ratingCount;
+
+      // bonus for good rating
+      if (score >= 4) {
+        receiver.points += 2; // 📘 book: +2 bonus
+        receiver.xp += 10;
+      }
+
+      await receiver.save();
+
+      return res.json({
+        rating,
+        updatedUser: {
+          _id: receiver._id,
+          ratingAvg: receiver.ratingAvg,
+          ratingCount: receiver.ratingCount,
+          points: receiver.points,
+          xp: receiver.xp,
+        },
+      });
+    } catch (err) {
+      console.error("RATE SESSION ERROR:", err);
+      return res.status(500).json({
+        error: "Failed to submit rating",
+        details: err instanceof Error ? err.message : "Unknown server error",
+      });
+    }
+  });
+
+  return router;
+};
+</file>
+
+<file path="routes/sessions.js">
+// server/routes/sessions.js
+const express = require("express");
+const mongoose = require("mongoose");
+const Session = require("../models/Session");
+const User = require("../models/User");
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(String(id));
+}
+
+function pickUser(u) {
+  if (!u) return null;
+  return {
+    _id: u._id,
+    fullName: u.fullName,
+    email: u.email,
+    points: u.points,
+    xp: u.xp,
+    streak: u.streak,
+    avgRating: u.avgRating,
+    ratingCount: u.ratingCount,
+  };
+}
+
+module.exports = function sessionsRouter(authMiddleware) {
+  const router = express.Router();
+
+  // ===============================
+  // CREATE SESSION (learner requests)
+  // POST /api/sessions
+  // ===============================
+  router.post("/", authMiddleware, async (req, res) => {
+    try {
+      const learnerId = String(req.userId);
+      const { mentorId, skill, level, scheduledAt, note } = req.body || {};
+
+      if (!mentorId || !skill || !scheduledAt) {
+        return res.status(400).json({
+          error: "mentorId, skill, scheduledAt are required",
+        });
+      }
+
+      if (!isValidObjectId(mentorId) || !isValidObjectId(learnerId)) {
+        return res.status(400).json({ error: "Invalid user id" });
+      }
+
+      const when = new Date(scheduledAt);
+      if (Number.isNaN(when.getTime())) {
+        return res.status(400).json({ error: "Invalid scheduledAt date" });
+      }
+
+      const doc = await Session.create({
+        mentorId,
+        learnerId,
+        skill: String(skill).trim(),
+        level: String(level || "Not specified").trim(),
+        scheduledAt: when,
+        note: String(note || "").trim(),
+        status: "requested",
+      });
+
+      const populated = await Session.findById(doc._id)
+        .populate(
+          "mentorId",
+          "fullName email points xp streak avgRating ratingCount"
+        )
+        .populate(
+          "learnerId",
+          "fullName email points xp streak avgRating ratingCount"
+        );
+
+      return res.json({
+        session: {
+          ...populated.toObject(),
+          mentor: pickUser(populated.mentorId),
+          learner: pickUser(populated.learnerId),
+        },
+      });
+    } catch (err) {
+      console.error("CREATE SESSION ERROR:", err);
+      return res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  // ===============================
+  // LIST MY SESSIONS
+  // GET /api/sessions/mine?role=any|mentor|learner&scope=upcoming|past|all&statuses=requested,accepted
+  // ===============================
+  router.get("/mine", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+
+      const roleRaw = String(req.query.role || "any").trim();
+      const role = roleRaw === "all" ? "any" : roleRaw;
+
+      const scope = String(req.query.scope || "all").trim();
+      const statusesCsv = String(
+        req.query.statuses || req.query.status || ""
+      ).trim();
+
+      const now = new Date();
+      const q = {};
+
+      if (role === "mentor") q.mentorId = userId;
+      else if (role === "learner") q.learnerId = userId;
+      else q.$or = [{ mentorId: userId }, { learnerId: userId }];
+
+      if (scope === "upcoming") q.scheduledAt = { $gte: now };
+      else if (scope === "past") q.scheduledAt = { $lt: now };
+
+      if (statusesCsv) {
+        const statuses = statusesCsv
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (statuses.length) q.status = { $in: statuses };
+      }
+
+      const list = await Session.find(q)
+        .sort({ scheduledAt: 1 })
+        .populate(
+          "mentorId",
+          "fullName email points xp streak avgRating ratingCount"
+        )
+        .populate(
+          "learnerId",
+          "fullName email points xp streak avgRating ratingCount"
+        );
+
+      const out = list.map((s) => ({
+        ...s.toObject(),
+        mentor: pickUser(s.mentorId),
+        learner: pickUser(s.learnerId),
+      }));
+
+      return res.json({ sessions: out });
+    } catch (err) {
+      console.error("LIST SESSIONS ERROR:", err);
+      return res.status(500).json({ error: "Failed to list sessions" });
+    }
+  });
+
+  // ===============================
+  // UPDATE SESSION STATUS
+  // PATCH /api/sessions/:id/status { status }
+  // ===============================
+  router.patch("/:id/status", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      const nextStatus = String(req.body?.status || "").trim();
+
+      const allowed = new Set([
+        "accepted",
+        "rejected",
+        "cancelled",
+        "completed",
+      ]);
+      if (!allowed.has(nextStatus)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({ error: "Invalid session id" });
+      }
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const isMentor = String(s.mentorId) === userId;
+      const isLearner = String(s.learnerId) === userId;
+      if (!isMentor && !isLearner) {
+        return res.status(403).json({ error: "Not allowed" });
+      }
+
+      // rules
+      if (nextStatus === "accepted" || nextStatus === "rejected") {
+        if (!isMentor) return res.status(403).json({ error: "Mentor only" });
+        if (s.status !== "requested") {
+          return res.status(400).json({
+            error: "Can only accept/reject requested sessions",
+          });
+        }
+      }
+
+      if (nextStatus === "completed") {
+        if (s.status !== "accepted") {
+          return res.status(400).json({
+            error: "Only accepted sessions can be completed",
+          });
+        }
+      }
+
+      if (nextStatus === "cancelled") {
+        if (s.status === "completed") {
+          return res
+            .status(400)
+            .json({ error: "Cannot cancel completed session" });
+        }
+      }
+
+      s.status = nextStatus;
+      await s.save();
+
+      // OPTIONAL gamification: keep or delete حسب البوك عندك
+      // if (nextStatus === "completed") {
+      //   const mentor = await User.findById(s.mentorId);
+      //   const learner = await User.findById(s.learnerId);
+      //   if (mentor) { mentor.points += 10; mentor.xp += 25; mentor.streak += 1; await mentor.save(); }
+      //   if (learner) { learner.xp += 10; await learner.save(); }
+      // }
+
+      const populated = await Session.findById(id)
+        .populate(
+          "mentorId",
+          "fullName email points xp streak avgRating ratingCount"
+        )
+        .populate(
+          "learnerId",
+          "fullName email points xp streak avgRating ratingCount"
+        );
+
+      return res.json({
+        session: {
+          ...populated.toObject(),
+          mentor: pickUser(populated.mentorId),
+          learner: pickUser(populated.learnerId),
+        },
+      });
+    } catch (err) {
+      console.error("UPDATE SESSION STATUS ERROR:", err);
+      return res.status(500).json({ error: "Failed to update session status" });
+    }
+  });
+
+  // ===============================
+  // RATE SESSION (for your SessionCard)
+  // POST /api/sessions/:id/rate  { rating, feedback }
+  // ===============================
+  router.post("/:id/rate", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      const rating = Number(req.body?.rating);
+      const feedback = String(req.body?.feedback || "").trim();
+
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+      if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+        return res
+          .status(400)
+          .json({ error: "rating must be between 1 and 5" });
+      }
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const isMentor = String(s.mentorId) === userId;
+      const isLearner = String(s.learnerId) === userId;
+      if (!isMentor && !isLearner)
+        return res.status(403).json({ error: "Not allowed" });
+
+      if (s.status !== "completed") {
+        return res
+          .status(400)
+          .json({ error: "You can rate only completed sessions" });
+      }
+
+      if (s.rating) {
+        return res.status(400).json({ error: "Session already rated" });
+      }
+
+      s.rating = Math.round(rating);
+      s.feedback = feedback;
+      await s.save();
+
+      return res.json({ ok: true, session: s });
+    } catch (err) {
+      console.error("RATE SESSION ERROR:", err);
+      return res.status(500).json({ error: "Failed to rate session" });
+    }
+  });
+
+  return router;
+};
+</file>
+
+<file path="routes/users.js">
+// server/routes/users.js
+const express = require("express");
+const mongoose = require("mongoose");
+const User = require("../models/User");
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(String(id));
+}
+
+function toPublicUser(u) {
+  return {
+    id: String(u._id),
+    fullName: u.fullName,
+    points: u.points,
+    xp: u.xp,
+    streak: u.streak,
+    avgRating: u.avgRating,
+    ratingCount: u.ratingCount,
+    skillsToTeach: u.skillsToTeach || [],
+    availabilitySlots: u.availabilitySlots || [],
+    preferences: u.preferences || { communicationModes: [], languages: [] },
+  };
+}
+
+module.exports = function usersRouter(authMiddleware) {
+  const router = express.Router();
+
+  // GET /api/users/:id
+  router.get("/:id", authMiddleware, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({ error: "Invalid user id" });
+      }
+
+      const u = await User.findById(id).select(
+        "fullName points xp streak avgRating ratingCount skillsToTeach availabilitySlots preferences"
+      );
+
+      if (!u) return res.status(404).json({ error: "User not found" });
+
+      return res.json(toPublicUser(u));
+    } catch (err) {
+      console.error("GET PUBLIC USER ERROR:", err);
+      return res.status(500).json({ error: "Failed to load user profile" });
+    }
+  });
+
+  return router;
+};
+</file>
+
+<file path="server.js">
+// server/server.js
+require("dotenv").config();
+
+const http = require("http");
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { Server } = require("socket.io");
+
+const User = require("./models/User");
+const Conversation = require("./models/Conversation");
+const Message = require("./models/Message");
+
+const pointsRoutes = require("./routes/points.routes");
+const sessionsRouter = require("./routes/sessions");
+const usersRouter = require("./routes/users");
+const chatRouter = require("./routes/chat");
+
+const { findMentorMatches } = require("./services/matchingService");
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+const MONGO_URI = process.env.MONGO_URI;
+const JWT_SECRET = process.env.JWT_SECRET || "dev-fallback-secret-123";
+const PORT = process.env.PORT || 4000;
+
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI is not defined in .env – cannot start server");
+  process.exit(1);
+}
+
+mongoose
+  .connect(MONGO_URI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => {
+    console.error("❌ MongoDB Connection Error:", err?.message || err);
+    process.exit(1);
+  });
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing token" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.userId = payload.userId;
+    return next();
+  } catch {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
+
+app.get("/", (req, res) => res.send("SkillBridge API is running ✅"));
+
+app.get("/api/matching/status", (req, res) => {
+  const mode = process.env.MATCHING_MODE || "local";
+  res.json({
+    ok: true,
+    mode,
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    embedModel: process.env.OPENAI_EMBED_MODEL || null,
+  });
+});
+
+app.post("/auth/signup", async (req, res) => {
+  try {
+    const { fullName, email, password } = req.body;
+
+    if (!fullName || !email || !password) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const exists = await User.findOne({
+      email: String(email).toLowerCase().trim(),
+    });
+    if (exists) return res.status(409).json({ error: "Email already in use" });
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      fullName: String(fullName).trim(),
+      email: String(email).toLowerCase().trim(),
+      passwordHash: hashed,
+      points: 0,
+      xp: 0,
+      streak: 0,
+      skillsToLearn: [],
+      skillsToTeach: [],
+      availabilitySlots: [],
+      preferences: { communicationModes: [], languages: [] },
+    });
+
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    return res.json({
+      token,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        points: user.points,
+        xp: user.xp,
+        streak: user.streak,
+      },
+    });
+  } catch (err) {
+    console.error("SIGNUP ERROR:", err);
+    return res.status(500).json({ error: "Signup failed" });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const user = await User.findOne({
+      email: String(email).toLowerCase().trim(),
+    });
+    if (!user) return res.status(401).json({ error: "Invalid credentials" });
+
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    return res.json({
+      token,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        points: user.points,
+        xp: user.xp,
+        streak: user.streak,
+      },
+    });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+    return res.status(500).json({ error: "Login failed" });
+  }
+});
+
+app.get("/api/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("-passwordHash");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({ user });
+  } catch (err) {
+    console.error("ME ERROR:", err);
+    return res.status(500).json({ error: "Failed to load user" });
+  }
+});
+
+app.put("/api/me/profile", authMiddleware, async (req, res) => {
+  try {
+    const updates = req.body || {};
+    const user = await User.findByIdAndUpdate(req.userId, updates, {
+      new: true,
+    }).select("-passwordHash");
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({ user });
+  } catch (err) {
+    console.error("UPDATE PROFILE ERROR:", err);
+    return res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+app.post("/api/matches/mentors", authMiddleware, async (req, res) => {
+  try {
+    const modeFromQuery = String((req.query || {}).mode || "").trim();
+    const modeFromBody = String((req.body || {}).mode || "").trim();
+    const mode = modeFromQuery || modeFromBody || "";
+
+    const payload = req.body || {};
+    const skillQuery = String(payload.skillQuery || payload.skill || "").trim();
+
+    const userAvailability = Array.isArray(payload.userAvailability)
+      ? payload.userAvailability
+      : Array.isArray(payload.availabilitySlots)
+      ? payload.availabilitySlots
+      : [];
+
+    const level = payload.level || "Beginner";
+
+    const params = {
+      userId: String(req.userId),
+      mode,
+      level,
+      skillQuery,
+      userAvailability,
+    };
+
+    const out = await findMentorMatches(params);
+
+    return res.json({
+      results: Array.isArray(out?.results) ? out.results : [],
+      meta: out?.meta || null,
+    });
+  } catch (err) {
+    console.error("MATCHING ERROR:", err);
+    return res.status(500).json({ error: "Failed to find mentor matches" });
+  }
+});
+
+app.use("/api/points", authMiddleware, pointsRoutes);
+app.use("/api/sessions", sessionsRouter(authMiddleware));
+app.use("/api/users", usersRouter(authMiddleware));
+app.use("/api/chat", chatRouter(authMiddleware));
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
+
+// ===== Presence tracking =====
+const userSocketsCount = new Map(); // userId -> count
+const lastSeenMap = new Map(); // userId -> Date ISO
+
+function setOnline(userId) {
+  const prev = userSocketsCount.get(userId) || 0;
+  userSocketsCount.set(userId, prev + 1);
+}
+
+function setOffline(userId) {
+  const prev = userSocketsCount.get(userId) || 0;
+  const next = Math.max(0, prev - 1);
+  if (next === 0) {
+    userSocketsCount.delete(userId);
+    lastSeenMap.set(userId, new Date().toISOString());
+  } else {
+    userSocketsCount.set(userId, next);
+  }
+}
+
+function isOnline(userId) {
+  return (userSocketsCount.get(userId) || 0) > 0;
+}
+
+async function emitPresenceToConversation(convId, userId) {
+  try {
+    const conv = await Conversation.findById(convId)
+      .select("participants")
+      .lean();
+    if (!conv) return;
+    const participants = (conv.participants || []).map(String);
+    for (const pid of participants) {
+      io.to(`user:${pid}`).emit("presence:update", {
+        userId: String(userId),
+        online: isOnline(String(userId)),
+        lastSeen: lastSeenMap.get(String(userId)) || null,
+      });
+    }
+  } catch {}
+}
+
+// ===== JWT auth for sockets =====
+io.use((socket, next) => {
+  try {
+    const tokenFromAuth = socket.handshake.auth?.token;
+    const tokenFromHeader = String(
+      socket.handshake.headers?.authorization || ""
+    )
+      .replace("Bearer ", "")
+      .trim();
+
+    const token = String(tokenFromAuth || tokenFromHeader || "").trim();
+    if (!token) return next(new Error("Missing token"));
+
+    const payload = jwt.verify(token, JWT_SECRET);
+    socket.userId = String(payload.userId);
+    return next();
+  } catch {
+    return next(new Error("Invalid token"));
+  }
+});
+
+io.on("connection", (socket) => {
+  const me = String(socket.userId);
+
+  // personal room for direct events (presence, etc.)
+  socket.join(`user:${me}`);
+
+  // mark online + broadcast presence to people who care (best-effort)
+  setOnline(me);
+  io.to(`user:${me}`).emit("presence:update", {
+    userId: me,
+    online: true,
+    lastSeen: lastSeenMap.get(me) || null,
+  });
+
+  socket.on("conversation:join", async ({ conversationId, peerId }) => {
+    try {
+      const convId = String(conversationId || "").trim();
+      if (!mongoose.Types.ObjectId.isValid(convId)) return;
+
+      const conv = await Conversation.findById(convId)
+        .select("participants")
+        .lean();
+      if (!conv) return;
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return;
+
+      socket.join(convId);
+
+      // optional: client tells peerId; we can reply with peer presence instantly
+      const peer = String(peerId || "").trim();
+      if (peer) {
+        socket.emit("presence:update", {
+          userId: peer,
+          online: isOnline(peer),
+          lastSeen: lastSeenMap.get(peer) || null,
+        });
+      }
+
+      // mark as read on join (best effort)
+      await Message.updateMany(
+        {
+          conversationId: convId,
+          senderId: { $ne: me },
+          readBy: { $ne: me },
+        },
+        { $addToSet: { readBy: me } }
+      );
+
+      // notify read receipt to room (so sender can show ✓✓)
+      socket
+        .to(convId)
+        .emit("read:receipt", { conversationId: convId, readerId: me });
+    } catch {
+      // ignore
+    }
+  });
+
+  socket.on("conversation:read", async ({ conversationId }) => {
+    try {
+      const convId = String(conversationId || "").trim();
+      if (!mongoose.Types.ObjectId.isValid(convId)) return;
+
+      const conv = await Conversation.findById(convId)
+        .select("participants")
+        .lean();
+      if (!conv) return;
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return;
+
+      await Message.updateMany(
+        {
+          conversationId: convId,
+          senderId: { $ne: me },
+          readBy: { $ne: me },
+        },
+        { $addToSet: { readBy: me } }
+      );
+
+      socket
+        .to(convId)
+        .emit("read:receipt", { conversationId: convId, readerId: me });
+    } catch {
+      // ignore
+    }
+  });
+
+  socket.on("typing", async ({ conversationId, isTyping }) => {
+    try {
+      const convId = String(conversationId || "").trim();
+      if (!mongoose.Types.ObjectId.isValid(convId)) return;
+
+      const conv = await Conversation.findById(convId)
+        .select("participants")
+        .lean();
+      if (!conv) return;
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return;
+
+      socket.to(convId).emit("typing", {
+        conversationId: convId,
+        userId: me,
+        isTyping: !!isTyping,
+      });
+    } catch {
+      // ignore
+    }
+  });
+
+  socket.on("message:send", async ({ conversationId, text }, cb) => {
+    try {
+      const convId = String(conversationId || "").trim();
+      const clean = String(text || "").trim();
+
+      if (!clean) return cb?.({ ok: false, error: "Text is required" });
+      if (!mongoose.Types.ObjectId.isValid(convId))
+        return cb?.({ ok: false, error: "Invalid conversation id" });
+
+      const conv = await Conversation.findById(convId);
+      if (!conv) return cb?.({ ok: false, error: "Conversation not found" });
+
+      const isMember = conv.participants.map(String).includes(me);
+      if (!isMember) return cb?.({ ok: false, error: "Not allowed" });
+
+      const msg = await Message.create({
+        conversationId: convId,
+        senderId: me,
+        text: clean,
+        readBy: [me],
+      });
+
+      conv.lastMessageText = clean.slice(0, 200);
+      conv.lastMessageAt = msg.createdAt;
+      await conv.save();
+
+      const payload = {
+        id: String(msg._id),
+        conversationId: convId,
+        senderId: me,
+        text: msg.text,
+        createdAt: msg.createdAt,
+      };
+
+      io.to(convId).emit("message:new", payload);
+      return cb?.({ ok: true, message: payload });
+    } catch (err) {
+      return cb?.({ ok: false, error: "Failed to send" });
+    }
+  });
+
+  socket.on("disconnect", async () => {
+    setOffline(me);
+
+    // broadcast presence change to whoever is listening to me
+    io.to(`user:${me}`).emit("presence:update", {
+      userId: me,
+      online: isOnline(me),
+      lastSeen: lastSeenMap.get(me) || null,
+    });
+
+    // Best effort: also notify all my conversations' participants
+    try {
+      const convs = await Conversation.find({ participants: me })
+        .select("_id")
+        .lean();
+      for (const c of convs) {
+        await emitPresenceToConversation(String(c._id), me);
+      }
+    } catch {}
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
+</file>
+
+<file path="services/matchingService.js">
+// server/services/matchingService.js
+const { findMentorMatches } = require("../matching");
+module.exports = { findMentorMatches };
+</file>
+
+<file path="services/pointsService.js">
+// server/services/pointsService.js
+const mongoose = require("mongoose");
+const User = require("../models/User");
+const PointTransaction = require("../models/PointTransaction");
+
+async function getBalance(userId) {
+  const user = await User.findById(userId).select("points");
+  if (!user) throw new Error("User not found");
+  return user.points || 0;
+}
+
+async function addPoints(userId, amount, reason, sessionId = null) {
+  if (amount <= 0) throw new Error("Amount must be positive");
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new Error("User not found");
+
+    const current = user.points || 0;
+    const next = current + amount;
+
+    user.points = next;
+    await user.save();
+
+    await PointTransaction.create(
+      [
+        {
+          userId,
+          amount,
+          reason,
+          sessionId,
+          balanceAfter: next,
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return next;
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
+  }
+}
+
+async function deductPoints(userId, amount, reason, sessionId = null) {
+  if (amount <= 0) throw new Error("Amount must be positive");
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const user = await User.findById(userId).session(session);
+    if (!user) throw new Error("User not found");
+
+    const current = user.points || 0;
+    if (current < amount) {
+      throw new Error("Not enough points");
+    }
+
+    const next = current - amount;
+    user.points = next;
+    await user.save();
+
+    await PointTransaction.create(
+      [
+        {
+          userId,
+          amount: -amount,
+          reason,
+          sessionId,
+          balanceAfter: next,
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return next;
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
+  }
+}
+
+module.exports = {
+  getBalance,
+  addPoints,
+  deductPoints,
+};
+</file>
+
+</files>

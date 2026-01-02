@@ -14,7 +14,7 @@ router.get("/balance", async (req, res) => {
     const balance = await getBalance(req.userId);
     return res.json({ balance });
   } catch (err) {
-    return res.status(400).json({ error: String(err.message || err) });
+    return res.status(400).json({ error: String(err?.message || err) });
   }
 });
 
@@ -36,7 +36,7 @@ router.get("/transactions", async (req, res) => {
 
     return res.json({ items });
   } catch (err) {
-    return res.status(400).json({ error: String(err.message || err) });
+    return res.status(400).json({ error: String(err?.message || err) });
   }
 });
 

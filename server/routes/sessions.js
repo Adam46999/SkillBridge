@@ -2,7 +2,6 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const Session = require("../models/Session");
-const User = require("../models/User");
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(String(id));
@@ -28,6 +27,7 @@ module.exports = function sessionsRouter(authMiddleware) {
   // ===============================
   // CREATE SESSION (learner requests)
   // POST /api/sessions
+  // body: { mentorId, skill, level?, scheduledAt, note? }
   // ===============================
   router.post("/", authMiddleware, async (req, res) => {
     try {
@@ -201,14 +201,6 @@ module.exports = function sessionsRouter(authMiddleware) {
       s.status = nextStatus;
       await s.save();
 
-      // OPTIONAL gamification: keep or delete حسب البوك عندك
-      // if (nextStatus === "completed") {
-      //   const mentor = await User.findById(s.mentorId);
-      //   const learner = await User.findById(s.learnerId);
-      //   if (mentor) { mentor.points += 10; mentor.xp += 25; mentor.streak += 1; await mentor.save(); }
-      //   if (learner) { learner.xp += 10; await learner.save(); }
-      // }
-
       const populated = await Session.findById(id)
         .populate(
           "mentorId",
@@ -233,7 +225,7 @@ module.exports = function sessionsRouter(authMiddleware) {
   });
 
   // ===============================
-  // RATE SESSION (for your SessionCard)
+  // RATE SESSION (simple session-local rating)
   // POST /api/sessions/:id/rate  { rating, feedback }
   // ===============================
   router.post("/:id/rate", authMiddleware, async (req, res) => {

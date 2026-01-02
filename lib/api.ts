@@ -2,27 +2,67 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+function getDevHostFromExpo(): string | null {
+  // Expo dev host (often available in dev mode)
+  const anyConst = Constants as any;
+
+  // common places across SDKs
+  const debuggerHost: string | undefined = anyConst?.debuggerHost;
+  const hostUri: string | undefined = anyConst?.expoConfig?.hostUri;
+
+  const raw = debuggerHost || hostUri || "";
+  if (!raw) return null;
+
+  // examples:
+  // "192.168.1.50:8081"
+  // "exp://192.168.1.50:8081"
+  // "http://192.168.1.50:8081"
+  const cleaned = raw
+    .replace("exp://", "")
+    .replace("http://", "")
+    .replace("https://", "");
+  const host = cleaned.split(":")[0]?.trim();
+  return host || null;
+}
+
 function resolveApiUrl(): string {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (envUrl) return envUrl;
+  const envUrlRaw = (process.env.EXPO_PUBLIC_API_URL || "").trim();
 
-  const debuggerHost = (Constants as any)?.debuggerHost as string | undefined;
-  let hostFromExpo: string | null = null;
+  // In Web we can safely use localhost if server is on same machine
+  if (Platform.OS === "web") {
+    // Prefer explicit env if provided
+    if (envUrlRaw) return envUrlRaw;
 
-  if (debuggerHost) hostFromExpo = debuggerHost.split(":")[0];
-  else if (typeof window !== "undefined") hostFromExpo = window.location.hostname;
+    const host =
+      (typeof window !== "undefined" && window.location?.hostname) || "localhost";
+    return `http://${host}:4000`;
+  }
 
-  if (hostFromExpo) {
-    if (Platform.OS === "android") {
-      if (hostFromExpo === "localhost" || hostFromExpo === "127.0.0.1") {
-        return "http://10.0.2.2:4000";
-      }
-      return `http://${hostFromExpo}:4000`;
+  // Native (Android/iOS)
+  // If user mistakenly set localhost in env, it breaks real devices.
+  // We'll ignore localhost env on native and auto-resolve correctly.
+  const envIsLocalhost =
+    envUrlRaw.includes("localhost") || envUrlRaw.includes("127.0.0.1");
+
+  if (envUrlRaw && !envIsLocalhost) {
+    return envUrlRaw;
+  }
+
+  const hostFromExpo = getDevHostFromExpo();
+
+  // Android emulator special-case
+  if (Platform.OS === "android") {
+    if (!hostFromExpo) return "http://10.0.2.2:4000";
+    if (hostFromExpo === "localhost" || hostFromExpo === "127.0.0.1") {
+      return "http://10.0.2.2:4000";
     }
     return `http://${hostFromExpo}:4000`;
   }
 
-  if (Platform.OS === "android") return "http://10.0.2.2:4000";
+  // iOS simulator / real device
+  if (hostFromExpo) return `http://${hostFromExpo}:4000`;
+
+  // Last fallback
   return "http://localhost:4000";
 }
 
@@ -84,10 +124,7 @@ export async function login(params: { email: string; password: string }) {
 
 // ---------- TYPES ----------
 export type AvailabilitySlot = { dayOfWeek: number; from: string; to: string };
-
 export type SkillTeach = { name: string; level: string };
-
-// ✅ skillsToLearn objects (حسب السيرفر عندك)
 export type SkillLearn = { name: string; level: string };
 
 export type MentorMatch = {
@@ -99,17 +136,14 @@ export type MentorMatch = {
   availabilitySlots?: AvailabilitySlot[];
 };
 
-// ✅ NEW: matching mode (عشان تغيّر من داخل الأب)
 export type MatchingMode = "local" | "openai" | "hybrid";
 
-// ✅ NEW: matching status (preflight)
 export type MatchingStatus = {
   openaiAvailable: boolean;
   reason: "OK" | "NO_KEY" | "ERROR" | string;
   recommendedMode: "local" | "hybrid";
 };
 
-// ✅ NEW: matching meta (returned with results)
 export type MatchingMeta = {
   requestedMode: MatchingMode | null;
   modeUsed: MatchingMode | null;
@@ -154,25 +188,17 @@ export async function updateWeeklyAvailability(
   return updateProfile(token, { availabilitySlots });
 }
 
-export async function updateSkillsToTeach(
-  token: string,
-  skillsToTeach: SkillTeach[]
-) {
+export async function updateSkillsToTeach(token: string, skillsToTeach: SkillTeach[]) {
   return updateProfile(token, { skillsToTeach });
 }
 
-export async function updateSkillsToLearn(
-  token: string,
-  skillsToLearn: SkillLearn[]
-) {
+export async function updateSkillsToLearn(token: string, skillsToLearn: SkillLearn[]) {
   return updateProfile(token, { skillsToLearn });
 }
 
 // ---------- MATCHING STATUS ----------
 export async function getMatchingStatus(): Promise<MatchingStatus> {
-  const res = await fetch(`${API_URL}/api/matching/status`, {
-    method: "GET",
-  });
+  const res = await fetch(`${API_URL}/api/matching/status`, { method: "GET" });
   return handleResponse(res);
 }
 
@@ -196,12 +222,13 @@ export async function getMentorMatches(
       skill: params.skill,
       level: params.level,
       availabilitySlots: params.availabilitySlots ?? [],
-      mode: params.mode, // لو بدك افتراضي خليها: params.mode ?? "local"
+      mode: params.mode,
     }),
   });
 
   return handleResponse(res);
 }
+
 // ---------- PUBLIC USER PROFILE (Mentor) ----------
 export type PublicUserProfile = {
   id: string;
@@ -216,10 +243,7 @@ export type PublicUserProfile = {
   preferences?: { communicationModes?: string[]; languages?: string[] };
 };
 
-export async function getPublicUserProfile(
-  token: string,
-  userId: string
-): Promise<PublicUserProfile> {
+export async function getPublicUserProfile(token: string, userId: string): Promise<PublicUserProfile> {
   const res = await fetch(`${API_URL}/api/users/${userId}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },

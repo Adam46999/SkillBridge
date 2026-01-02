@@ -22,6 +22,13 @@ import {
 } from "../../lib/sectionStatus";
 import ProfileStatusCard from "./components/ProfileStatusCard";
 
+import {
+  getChatInbox,
+  getInboxCache,
+  setInboxCache,
+  type ChatInboxItem,
+} from "../../lib/chat/api";
+
 type User = {
   _id: string;
   fullName: string;
@@ -85,6 +92,27 @@ function availabilityLabelFromMinutes(min: number) {
   return "Not set";
 }
 
+// ===== Inbox helpers =====
+function inboxTime(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function inboxInitials(name?: string) {
+  const n = String(name || "").trim();
+  if (!n) return "?";
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return (parts[0][0] || "?").toUpperCase();
+  return `${parts[0][0] || ""}${
+    parts[parts.length - 1][0] || ""
+  }`.toUpperCase();
+}
+
 export default function HomeScreen() {
   const router = useRouter();
 
@@ -100,11 +128,45 @@ export default function HomeScreen() {
     updatedAt: Date.now(),
   });
 
+  // ===== Inbox state =====
+  const [inbox, setInbox] = useState<ChatInboxItem[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(true);
+
   const mountedRef = useRef(true);
 
   const goLogin = useCallback(() => {
     router.replace("/(auth)/login" as any);
   }, [router]);
+
+  const loadInbox = useCallback(async (token: string) => {
+    try {
+      setInboxLoading(true);
+
+      // ✅ fast boot: cache
+      const cached = await getInboxCache();
+      if (mountedRef.current && cached?.length) {
+        setInbox(cached);
+        setInboxLoading(false);
+      }
+
+      // ✅ fresh fetch
+      const list = await getChatInbox(token);
+      if (!mountedRef.current) return;
+
+      const sorted = (Array.isArray(list) ? list : []).slice().sort((a, b) => {
+        const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return tb - ta;
+      });
+
+      setInbox(sorted);
+      void setInboxCache(sorted);
+    } catch {
+      // silent
+    } finally {
+      if (mountedRef.current) setInboxLoading(false);
+    }
+  }, []);
 
   const loadUser = useCallback(async () => {
     try {
@@ -119,6 +181,9 @@ export default function HomeScreen() {
         goLogin();
         return;
       }
+
+      // ✅ load inbox in parallel (no blocking)
+      void loadInbox(token);
 
       const me: any = await getMe(token);
       const userFromApi: User = (me?.user ?? me) as User;
@@ -136,7 +201,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [goLogin]);
+  }, [goLogin, loadInbox]);
 
   useFocusEffect(
     useCallback(() => {
@@ -293,7 +358,6 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* ✅ pending sync chips (minimal + clean) */}
           {pendingChips.length > 0 && (
             <View
               style={{
@@ -326,7 +390,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ✅ Profile status card */}
         <ProfileStatusCard status={profileStatus} />
 
         {/* ===== Stats row ===== */}
@@ -379,6 +442,113 @@ export default function HomeScreen() {
                 View requests, accept/reject, and manage upcoming sessions.
               </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ===== Messages (Inbox preview) ===== */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Messages</Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => router.push("/(tabs)/chats" as any)}
+            >
+              <Text style={styles.sectionAction}>View all</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.inboxCard}>
+            {inboxLoading ? (
+              <View style={{ paddingVertical: 10 }}>
+                <ActivityIndicator />
+                <Text
+                  style={{ color: "#94A3B8", marginTop: 8, fontWeight: "800" }}
+                >
+                  Loading messages…
+                </Text>
+              </View>
+            ) : inbox.length === 0 ? (
+              <View>
+                <Text style={styles.inboxEmptyTitle}>No messages yet</Text>
+                <Text style={styles.inboxEmptyBody}>
+                  Start by opening any mentor profile and pressing “Message”.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.inboxCta}
+                  onPress={handleFindMentor}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.inboxCtaText}>Find mentors</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {inbox.slice(0, 3).map((c) => {
+                  const name = c.peer?.fullName || "Unknown user";
+                  const last = c.lastMessageText?.trim()
+                    ? c.lastMessageText
+                    : "Say hi 👋";
+                  const time = inboxTime(c.lastMessageAt);
+                  const unread = Number(c.unreadCount || 0);
+
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      activeOpacity={0.88}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/chats/[conversationId]",
+                          params: {
+                            conversationId: c.id,
+                            peerName: c.peer?.fullName || "Chat",
+                            peerId: c.peer?.id || "",
+                          },
+                        } as any)
+                      }
+                      style={styles.inboxRow}
+                    >
+                      <View style={styles.inboxAvatar}>
+                        <Text style={styles.inboxAvatarText}>
+                          {inboxInitials(name)}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.inboxTopLine}>
+                          <Text style={styles.inboxName} numberOfLines={1}>
+                            {name}
+                          </Text>
+
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            {!!unread && (
+                              <View style={styles.inboxBadge}>
+                                <Text style={styles.inboxBadgeText}>
+                                  {unread > 99 ? "99+" : String(unread)}
+                                </Text>
+                              </View>
+                            )}
+                            {!!time && (
+                              <Text style={styles.inboxTime}>{time}</Text>
+                            )}
+                          </View>
+                        </View>
+
+                        <Text style={styles.inboxLast} numberOfLines={1}>
+                          {last}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
           </View>
         </View>
 
@@ -703,6 +873,68 @@ const styles = StyleSheet.create({
   },
   quickText: { color: "#9CA3AF", fontSize: 12 },
 
+  // ===== Inbox styles =====
+  inboxCard: {
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#111827",
+    borderRadius: 16,
+    padding: 12,
+  },
+  inboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#020617",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    borderRadius: 14,
+    padding: 10,
+  },
+  inboxAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inboxAvatarText: { color: "#F97316", fontWeight: "900", fontSize: 14 },
+  inboxTopLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  inboxName: { color: "#E5E7EB", fontWeight: "900", maxWidth: 210 },
+  inboxLast: { color: "#94A3B8", marginTop: 4, fontSize: 12 },
+  inboxTime: { color: "#64748B", fontSize: 11, fontWeight: "800" },
+  inboxBadge: {
+    backgroundColor: "#F97316",
+    borderWidth: 1,
+    borderColor: "#FB923C",
+    paddingHorizontal: 8,
+    height: 18,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inboxBadgeText: { color: "#111827", fontWeight: "900", fontSize: 10 },
+  inboxEmptyTitle: { color: "#E5E7EB", fontWeight: "900" },
+  inboxEmptyBody: { color: "#94A3B8", marginTop: 6 },
+  inboxCta: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    backgroundColor: "#F97316",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  inboxCtaText: { color: "#ffffff", fontWeight: "900" },
+
+  // ===== rest =====
   horizontalChips: { paddingVertical: 4, paddingRight: 4, gap: 8 },
   chip: {
     paddingHorizontal: 10,
