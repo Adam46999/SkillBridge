@@ -1,0 +1,12 @@
+[33m575b693[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32madam[m[33m, [m[1;31morigin/main[m[33m)[m HEAD@{2026-01-03 22:09:29 +0200}: reset: moving to origin/main
+[33m687ffeb[m[33m ([m[1;31morigin/adam[m[33m)[m HEAD@{2026-01-02 16:52:39 +0200}: commit: adding chat ubgrading session and make them work together
+[33md1a7537[m HEAD@{2025-12-28 11:28:29 +0200}: commit: sessions
+[33mfd4643d[m HEAD@{2025-12-24 13:36:05 +0200}: commit: working on rating+sessions+and points system maybe i finished with sessions and rating for now maybe will be small vhanges or uxui upgrading
+[33m5eace2c[m HEAD@{2025-12-15 14:07:46 +0200}: commit: s.t.l s.t.t home matching with ai and without upgrading the availability slots page making find a mentor page with all the logic that needs work
+[33m919b7e1[m HEAD@{2025-12-08 20:27:25 +0200}: commit: pushed new fixed
+[33mbeed9ef[m[33m ([m[1;32mmain[m[33m)[m HEAD@{2025-12-08 20:25:02 +0200}: checkout: moving from main to adam
+[33mbeed9ef[m[33m ([m[1;32mmain[m[33m)[m HEAD@{2025-12-08 20:24:22 +0200}: Branch: renamed refs/heads/main to refs/heads/main
+[33mbeed9ef[m[33m ([m[1;32mmain[m[33m)[m HEAD@{2025-12-08 20:22:28 +0200}: Branch: renamed refs/heads/master to refs/heads/main
+[33mbeed9ef[m[33m ([m[1;32mmain[m[33m)[m HEAD@{2025-12-08 20:11:56 +0200}: commit: a
+[33mf756d36[m HEAD@{2025-12-08 19:54:38 +0200}: commit: starting the manange page
+[33m4b7c0ad[m HEAD@{2025-11-17 22:06:07 +0200}: commit (initial): Initial commit
