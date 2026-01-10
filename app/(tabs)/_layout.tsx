@@ -1,7 +1,51 @@
-import { Tabs } from "expo-router";
-import { Text } from "react-native";
+// app/(tabs)/_layout.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Tabs, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
 
 export default function TabLayout() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!mounted) return;
+
+        if (!token) {
+          router.replace("/(auth)/login" as any);
+          return;
+        }
+      } finally {
+        if (mounted) setChecking(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
+  if (checking) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#020617",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator />
+        <Text style={{ color: "#94A3B8", marginTop: 10 }}>Loading...</Text>
+      </View>
+    );
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -23,7 +67,6 @@ export default function TabLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="explore"
         options={{
@@ -33,7 +76,6 @@ export default function TabLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="chats"
         options={{

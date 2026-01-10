@@ -1,4 +1,3 @@
-// app/screens/homescreen.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -28,6 +27,13 @@ import {
   setInboxCache,
   type ChatInboxItem,
 } from "../../lib/chat/api";
+
+import CollapsibleCard from "./home/components/CollapsibleCard";
+import HomeHero from "./home/components/HomeHero";
+import InboxPreview from "./home/components/InboxPreview";
+import MiniStatsRow from "./home/components/MiniStatsRow";
+import SectionHeader from "./home/components/SectionHeader";
+import StickyPrimaryCTA from "./home/components/StickyPrimaryCTA";
 
 type User = {
   _id: string;
@@ -80,11 +86,6 @@ function minutesToHuman(totalMin: number): string {
   return `${h}h ${m}m`;
 }
 
-function formatLastUpdated(ts: number | null): string {
-  if (!ts) return "Not saved yet";
-  return formatTimeAgo(ts);
-}
-
 function availabilityLabelFromMinutes(min: number) {
   if (min >= 600) return "🟢 Excellent";
   if (min >= 240) return "🟡 Good";
@@ -92,29 +93,24 @@ function availabilityLabelFromMinutes(min: number) {
   return "Not set";
 }
 
-// ===== Inbox helpers =====
-function inboxTime(iso?: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function formatLastUpdated(ts: number | null): string {
+  if (!ts) return "Not saved yet";
+  return formatTimeAgo(ts);
 }
 
-function inboxInitials(name?: string) {
-  const n = String(name || "").trim();
-  if (!n) return "?";
-  const parts = n.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return (parts[0][0] || "?").toUpperCase();
-  return `${parts[0][0] || ""}${
-    parts[parts.length - 1][0] || ""
-  }`.toUpperCase();
+function inferNextLine(user: User | null, inbox: ChatInboxItem[]) {
+  const learnCount = user?.skillsToLearn?.length || 0;
+  const hasInbox = inbox.length > 0;
+
+  if (learnCount === 0)
+    return "Next: add a learning goal to get better matches.";
+  if (!hasInbox) return "Next: find a mentor and send your first message.";
+  return "Next: open a chat or request a session with a mentor.";
 }
 
 export default function HomeScreen() {
   const router = useRouter();
+  const mountedRef = useRef(true);
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,11 +124,11 @@ export default function HomeScreen() {
     updatedAt: Date.now(),
   });
 
-  // ===== Inbox state =====
   const [inbox, setInbox] = useState<ChatInboxItem[]>([]);
   const [inboxLoading, setInboxLoading] = useState(true);
 
-  const mountedRef = useRef(true);
+  const [setupOpen, setSetupOpen] = useState(true);
+  const [teachOpen, setTeachOpen] = useState(false);
 
   const goLogin = useCallback(() => {
     router.replace("/(auth)/login" as any);
@@ -142,14 +138,12 @@ export default function HomeScreen() {
     try {
       setInboxLoading(true);
 
-      // ✅ fast boot: cache
       const cached = await getInboxCache();
       if (mountedRef.current && cached?.length) {
         setInbox(cached);
         setInboxLoading(false);
       }
 
-      // ✅ fresh fetch
       const list = await getChatInbox(token);
       if (!mountedRef.current) return;
 
@@ -172,7 +166,6 @@ export default function HomeScreen() {
     try {
       setErrorText(null);
 
-      // ✅ One place to read cross-section state
       const st = await readSectionStatus();
       if (mountedRef.current) setSectionStatus(st);
 
@@ -182,7 +175,6 @@ export default function HomeScreen() {
         return;
       }
 
-      // ✅ load inbox in parallel (no blocking)
       void loadInbox(token);
 
       const me: any = await getMe(token);
@@ -190,6 +182,10 @@ export default function HomeScreen() {
 
       if (!mountedRef.current) return;
       setUser(userFromApi);
+
+      // UX: if user already teaches, open teach by default
+      const hasTeach = (userFromApi.skillsToTeach?.length || 0) > 0;
+      setTeachOpen(hasTeach);
     } catch (err: any) {
       console.log("Home / getMe error:", err);
       if (!mountedRef.current) return;
@@ -223,20 +219,33 @@ export default function HomeScreen() {
     goLogin();
   };
 
+  // Navigation handlers (no behavior change)
   const handleFindMentor = () => router.push("/find-mentor" as any);
   const handleGoAvailability = () => router.push("/weekly-availability" as any);
   const handleGoTeach = () => router.push("/manage-skills-to-teach" as any);
   const handleGoLearn = () => router.push("/manage-skills-to-learn" as any);
   const handleGoSessions = () => router.push("/sessions" as any);
+  const handleOpenAllChats = () => router.push("/(tabs)/chats" as any);
 
-  // ✅ HOOKS BEFORE ANY EARLY RETURN
+  const handleOpenChat = (c: ChatInboxItem) => {
+    router.push({
+      pathname: "/(tabs)/chats/[conversationId]",
+      params: {
+        conversationId: c.id,
+        peerName: c.peer?.fullName || "Chat",
+        peerId: c.peer?.id || "",
+      },
+    } as any);
+  };
+
+  // Derived UI state
   const profileStatus = useMemo(() => getProfileCompletionStatus(user), [user]);
 
   const xp = user?.xp ?? 0;
   const points = user?.points ?? 0;
   const streak = user?.streak ?? 0;
-  const { level, progress } = getLevelFromXp(xp);
 
+  const { level, progress } = getLevelFromXp(xp);
   const slots = user?.availabilitySlots ?? [];
   const totalMin = useMemo(() => calcTotalMinutes(slots), [slots]);
   const daysSet = useMemo(
@@ -250,32 +259,39 @@ export default function HomeScreen() {
 
   const bestDay = useMemo(() => {
     if (!slots.length) return null;
-
     const minutesByDay: number[] = [0, 0, 0, 0, 0, 0, 0];
 
     for (const s of slots) {
       const d = Number(s.dayOfWeek);
       if (d < 0 || d > 6) continue;
-
-      const val = Math.max(0, timeToMinutes(s.to) - timeToMinutes(s.from));
-      minutesByDay[d] += val;
+      minutesByDay[d] += Math.max(
+        0,
+        timeToMinutes(s.to) - timeToMinutes(s.from)
+      );
     }
 
     let bestIdx = -1;
     let bestMin = 0;
-
     for (let i = 0; i < 7; i++) {
       if (minutesByDay[i] > bestMin) {
         bestMin = minutesByDay[i];
         bestIdx = i;
       }
     }
-
     if (bestIdx === -1 || bestMin <= 0) return null;
     return `${dayNames[bestIdx]} · ${minutesToHuman(bestMin)}`;
   }, [slots]);
 
-  // ✅ NOW safe to early return
+  const nextLine = useMemo(() => inferNextLine(user, inbox), [user, inbox]);
+
+  const isNewLearner = useMemo(() => {
+    const learnCount = user?.skillsToLearn?.length || 0;
+    const teachCount = user?.skillsToTeach?.length || 0;
+    const hasAvail = (user?.availabilitySlots?.length || 0) > 0;
+    const hasInbox = inbox.length > 0;
+    return learnCount === 0 && teachCount === 0 && !hasAvail && !hasInbox;
+  }, [user, inbox]);
+
   if (loading && !user && !errorText) {
     return (
       <View style={styles.loadingScreen}>
@@ -285,451 +301,268 @@ export default function HomeScreen() {
     );
   }
 
-  const pendingChips = [
-    sectionStatus.learnHasPendingSync ? "Learn: pending sync" : null,
-    sectionStatus.teachHasPendingSync ? "Teach: pending sync" : null,
-  ].filter(Boolean) as string[];
-
   return (
     <View style={styles.root}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#F97316"
-            colors={["#F97316"]}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* ===== Top hero card ===== */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.greeting}>
-                {user ? "Welcome back" : "Welcome to SkillSwap"}
-              </Text>
-              <Text style={styles.name}>
-                {user?.fullName || "SkillSwap user"}
-              </Text>
-              <Text style={styles.tagline}>
-                See your progress, grow your skills, and connect with other
-                learners.
-              </Text>
-            </View>
+        {/* START HERE */}
+        <HomeHero
+          fullName={user?.fullName}
+          initials={getInitials(user?.fullName)}
+          level={level}
+          progress={progress}
+          streak={streak}
+          nextLine={nextLine}
+          onPrimary={handleFindMentor}
+          onSecondary={handleGoSessions}
+        />
 
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {getInitials(user?.fullName)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.heroBottomRow}>
-            <View style={styles.levelColumn}>
-              <Text style={styles.levelLabel}>Level</Text>
-              <Text style={styles.levelValue}>{level}</Text>
-            </View>
-
-            <View style={styles.progressColumn}>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>XP progress</Text>
-                <Text style={styles.progressValue}>{progress}/100</Text>
-              </View>
-
-              <View style={styles.progressBarBackground}>
-                <View
-                  style={[
-                    styles.progressBarFill,
-                    { width: `${Math.min(progress, 100)}%` },
-                  ]}
-                />
-              </View>
-            </View>
-
-            {streak > 0 && (
-              <View style={styles.streakBadge}>
-                <Text style={styles.streakEmoji}>🔥</Text>
-                <Text style={styles.streakText}>{streak}-day streak</Text>
-              </View>
-            )}
-          </View>
-
-          {pendingChips.length > 0 && (
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 8,
-                flexWrap: "wrap",
-                marginTop: 10,
-              }}
-            >
-              {pendingChips.map((t) => (
-                <View key={t} style={styles.pendingChip}>
-                  <Text style={styles.pendingChipText}>{t}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {errorText && (
+        {errorText ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorTitle}>We couldn’t refresh your data</Text>
             <Text style={styles.errorBody}>{errorText}</Text>
             <TouchableOpacity
-              style={styles.retryButton}
+              style={styles.retryBtn}
               onPress={loadUser}
               activeOpacity={0.85}
             >
               <Text style={styles.retryText}>Try again</Text>
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
         <ProfileStatusCard status={profileStatus} />
+        <MiniStatsRow xp={xp} points={points} streak={streak} />
 
-        {/* ===== Stats row ===== */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>XP</Text>
-            <Text style={styles.statValue}>{xp}</Text>
-            <Text style={styles.statHint}>Earned by learning from others</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Points</Text>
-            <Text style={styles.statValue}>{points}</Text>
-            <Text style={styles.statHint}>Earned by teaching others</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Streak</Text>
-            <Text style={styles.statValue}>{streak}</Text>
-            <Text style={styles.statHint}>Active days in a row</Text>
-          </View>
-        </View>
-
-        {/* ===== Quick actions ===== */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick actions</Text>
-          <Text style={styles.sectionSubtitle}>
-            Start from one of these common actions.
-          </Text>
-
-          <View style={styles.quickRow}>
+        {/* YOUR ACTIVITY */}
+        <View style={{ marginBottom: 10 }}>
+          <SectionHeader
+            icon="📌"
+            title="Your activity"
+            subtitle="Keep an eye on sessions and messages."
+          />
+          <View style={styles.activityRow}>
             <TouchableOpacity
-              style={[styles.quickCard, styles.quickPrimary]}
-              onPress={handleFindMentor}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.quickEmoji}>🧑‍🏫</Text>
-              <Text style={styles.quickTitle}>Find a mentor</Text>
-              <Text style={styles.quickText}>
-                Discover people who can help you with your learning goals.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickCard, styles.quickSecondary]}
+              style={[styles.activityCard, styles.activityPrimary]}
               onPress={handleGoSessions}
               activeOpacity={0.85}
             >
-              <Text style={styles.quickEmoji}>📅</Text>
-              <Text style={styles.quickTitle}>My sessions</Text>
-              <Text style={styles.quickText}>
-                View requests, accept/reject, and manage upcoming sessions.
+              <Text style={styles.activityEmoji}>📅</Text>
+              <Text style={styles.activityTitle}>My sessions</Text>
+              <Text style={styles.activityText}>
+                View requests, upcoming sessions, and actions.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.activityCard, styles.activitySecondary]}
+              onPress={handleOpenAllChats}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.activityEmoji}>💬</Text>
+              <Text style={styles.activityTitle}>Chats</Text>
+              <Text style={styles.activityText}>
+                Open conversations and reply fast.
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ===== Messages (Inbox preview) ===== */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Messages</Text>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => router.push("/(tabs)/chats" as any)}
-            >
-              <Text style={styles.sectionAction}>View all</Text>
-            </TouchableOpacity>
-          </View>
+        <InboxPreview
+          loading={inboxLoading}
+          inbox={inbox ?? []}
+          onOpenAll={handleOpenAllChats}
+          onFindMentor={handleFindMentor}
+          onOpenChat={handleOpenChat}
+        />
 
-          <View style={styles.inboxCard}>
-            {inboxLoading ? (
-              <View style={{ paddingVertical: 10 }}>
-                <ActivityIndicator />
-                <Text
-                  style={{ color: "#94A3B8", marginTop: 8, fontWeight: "800" }}
-                >
-                  Loading messages…
+        {/* SETUP (Collapsible) */}
+        <CollapsibleCard
+          title="Setup"
+          icon="🧩"
+          open={setupOpen}
+          onToggle={() => setSetupOpen((v) => !v)}
+        >
+          {/* Learn */}
+          <View style={styles.section}>
+            <SectionHeader
+              icon="📚"
+              title="Skills you want to learn"
+              actionLabel="Manage"
+              onAction={handleGoLearn}
+            />
+            {user?.skillsToLearn?.length ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsRow}
+              >
+                {user.skillsToLearn.map((skill, idx) => (
+                  <View key={`${skill.name}-${idx}`} style={styles.chip}>
+                    <Text style={styles.chipText}>
+                      {skill.name}
+                      {skill.level && skill.level !== "Not specified"
+                        ? ` · ${skill.level}`
+                        : ""}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No learning goals yet</Text>
+                <Text style={styles.emptyText}>
+                  Add a few skills you’re interested in, so we can match you
+                  with the right mentors.
                 </Text>
-              </View>
-            ) : inbox.length === 0 ? (
-              <View>
-                <Text style={styles.inboxEmptyTitle}>No messages yet</Text>
-                <Text style={styles.inboxEmptyBody}>
-                  Start by opening any mentor profile and pressing “Message”.
-                </Text>
-
                 <TouchableOpacity
-                  style={styles.inboxCta}
-                  onPress={handleFindMentor}
+                  style={styles.primaryCta}
+                  onPress={handleGoLearn}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.inboxCtaText}>Find mentors</Text>
+                  <Text style={styles.primaryCtaText}>Add learning goals</Text>
                 </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {inbox.slice(0, 3).map((c) => {
-                  const name = c.peer?.fullName || "Unknown user";
-                  const last = c.lastMessageText?.trim()
-                    ? c.lastMessageText
-                    : "Say hi 👋";
-                  const time = inboxTime(c.lastMessageAt);
-                  const unread = Number(c.unreadCount || 0);
-
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      activeOpacity={0.88}
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(tabs)/chats/[conversationId]",
-                          params: {
-                            conversationId: c.id,
-                            peerName: c.peer?.fullName || "Chat",
-                            peerId: c.peer?.id || "",
-                          },
-                        } as any)
-                      }
-                      style={styles.inboxRow}
-                    >
-                      <View style={styles.inboxAvatar}>
-                        <Text style={styles.inboxAvatarText}>
-                          {inboxInitials(name)}
-                        </Text>
-                      </View>
-
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.inboxTopLine}>
-                          <Text style={styles.inboxName} numberOfLines={1}>
-                            {name}
-                          </Text>
-
-                          <View
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 8,
-                            }}
-                          >
-                            {!!unread && (
-                              <View style={styles.inboxBadge}>
-                                <Text style={styles.inboxBadgeText}>
-                                  {unread > 99 ? "99+" : String(unread)}
-                                </Text>
-                              </View>
-                            )}
-                            {!!time && (
-                              <Text style={styles.inboxTime}>{time}</Text>
-                            )}
-                          </View>
-                        </View>
-
-                        <Text style={styles.inboxLast} numberOfLines={1}>
-                          {last}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
               </View>
             )}
           </View>
-        </View>
 
-        {/* ===== Skills learn ===== */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Skills you want to learn</Text>
-            <TouchableOpacity activeOpacity={0.85} onPress={handleGoLearn}>
-              <Text style={styles.sectionAction}>Manage</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Availability */}
+          <View style={styles.section}>
+            <SectionHeader
+              icon="⏰"
+              title="Your weekly availability"
+              actionLabel={slots.length ? "Edit" : "Set now"}
+              onAction={handleGoAvailability}
+            />
 
-          {user?.skillsToLearn?.length ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.horizontalChips}
-            >
-              {user.skillsToLearn.map((skill, idx) => (
-                <View key={`${skill.name}-${idx}`} style={styles.chip}>
-                  <Text style={styles.chipText}>
-                    {skill.name}
-                    {skill.level && skill.level !== "Not specified"
-                      ? ` · ${skill.level}`
-                      : ""}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No learning goals yet</Text>
-              <Text style={styles.emptyText}>
-                Add a few skills you’re interested in, so we can match you with
-                the right mentors.
+            <View style={styles.availSummary}>
+              <Text style={styles.availTop}>
+                {qualityLabel} · {daysSet} day{daysSet === 1 ? "" : "s"} ·{" "}
+                {minutesToHuman(totalMin)} total
               </Text>
-              <TouchableOpacity
-                style={styles.primaryCta}
-                onPress={handleGoLearn}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.primaryCtaText}>Add learning goals</Text>
-              </TouchableOpacity>
+              <Text style={styles.availBottom}>
+                {bestDay ? `Best: ${bestDay} · ` : ""}
+                Last saved: {lastUpdatedText}
+              </Text>
             </View>
-          )}
-        </View>
 
-        {/* ===== Skills teach ===== */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Skills you can teach</Text>
-            <TouchableOpacity activeOpacity={0.85} onPress={handleGoTeach}>
-              <Text style={styles.sectionAction}>Manage</Text>
-            </TouchableOpacity>
+            {slots.length ? (
+              <View style={styles.availList}>
+                {slots.slice(0, 4).map((slot, idx) => (
+                  <View
+                    key={`${slot.dayOfWeek}-${slot.from}-${slot.to}-${idx}`}
+                    style={styles.availRow}
+                  >
+                    <Text style={styles.availDay}>
+                      {dayNames[slot.dayOfWeek] || "Day"}
+                    </Text>
+                    <Text style={styles.availTime}>
+                      {slot.from} – {slot.to}
+                    </Text>
+                  </View>
+                ))}
+
+                {slots.length > 4 ? (
+                  <TouchableOpacity
+                    onPress={handleGoAvailability}
+                    activeOpacity={0.85}
+                    style={styles.availMoreBtn}
+                  >
+                    <Text style={styles.availMoreText}>
+                      View all ({slots.length}) →
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>No availability set</Text>
+                <Text style={styles.emptyText}>
+                  Set 1–2 time slots (evenings/weekend) to improve mentor
+                  matches.
+                </Text>
+                <TouchableOpacity
+                  style={styles.primaryCta}
+                  onPress={handleGoAvailability}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.primaryCtaText}>
+                    Set availability (2 mins)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
-          {user?.skillsToTeach?.length ? (
-            <View style={styles.teachList}>
-              {user.skillsToTeach.map((skill, idx) => (
-                <View key={`${skill.name}-${idx}`} style={styles.teachCard}>
-                  <View style={{ flex: 1 }}>
+          {/* Teach (Collapsible inside setup) */}
+          <CollapsibleCard
+            title="Skills you can teach"
+            icon="🧑‍🏫"
+            open={teachOpen}
+            onToggle={() => setTeachOpen((v) => !v)}
+          >
+            {user?.skillsToTeach?.length ? (
+              <View style={{ gap: 8 }}>
+                {user.skillsToTeach.map((skill, idx) => (
+                  <View key={`${skill.name}-${idx}`} style={styles.teachCard}>
                     <Text style={styles.teachName}>{skill.name}</Text>
                     <Text style={styles.teachLevel}>
                       Level: {skill.level || "Not specified"}
                     </Text>
                   </View>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>Nothing to teach yet</Text>
-              <Text style={styles.emptyText}>
-                Add at least one skill you feel comfortable teaching. This will
-                unlock more ways to earn points.
-              </Text>
-              <TouchableOpacity
-                style={styles.primaryCta}
-                onPress={handleGoTeach}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.primaryCtaText}>Add teaching skills</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* ===== Availability ===== */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Your weekly availability</Text>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={handleGoAvailability}
-            >
-              <Text style={styles.sectionAction}>
-                {slots.length ? "Edit" : "Set now"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.availSummaryCard}>
-            <Text style={styles.availSummaryTop}>
-              {qualityLabel} · {daysSet} day{daysSet === 1 ? "" : "s"} ·{" "}
-              {minutesToHuman(totalMin)} total
-            </Text>
-            <Text style={styles.availSummaryBottom}>
-              {bestDay ? `Best: ${bestDay} · ` : ""}
-              Last saved: {lastUpdatedText}
-            </Text>
-          </View>
-
-          {slots.length ? (
-            <View style={styles.availabilityList}>
-              {slots.slice(0, 4).map((slot, idx) => (
-                <View
-                  key={`${slot.dayOfWeek}-${slot.from}-${slot.to}-${idx}`}
-                  style={styles.availabilityRow}
-                >
-                  <Text style={styles.availabilityDay}>
-                    {dayNames[slot.dayOfWeek] || "Day"}
-                  </Text>
-                  <Text style={styles.availabilityTime}>
-                    {slot.from} – {slot.to}
-                  </Text>
-                </View>
-              ))}
-
-              {slots.length > 4 && (
-                <TouchableOpacity
-                  onPress={handleGoAvailability}
-                  activeOpacity={0.85}
-                  style={styles.availMoreBtn}
-                >
-                  <Text style={styles.availMoreText}>
-                    View all ({slots.length}) →
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No availability set</Text>
-              <Text style={styles.emptyText}>
-                Set 1–2 time slots (evenings/weekend) to improve mentor matches.
-              </Text>
-              <TouchableOpacity
-                style={styles.primaryCta}
-                onPress={handleGoAvailability}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.primaryCtaText}>
-                  Set availability (2 mins)
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>Nothing to teach yet</Text>
+                <Text style={styles.emptyText}>
+                  Add one skill you can teach to unlock more ways to earn
+                  points.
                 </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+                <TouchableOpacity
+                  style={styles.primaryCta}
+                  onPress={handleGoTeach}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.primaryCtaText}>Add teaching skills</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </CollapsibleCard>
+        </CollapsibleCard>
 
-        {/* ===== Footer ===== */}
+        {/* Footer */}
         <View style={styles.footerRow}>
           <Text style={styles.footerHint}>
             Availability saved: {lastUpdatedText}
           </Text>
           <TouchableOpacity
-            style={styles.logoutButton}
+            style={styles.logoutBtn}
             onPress={handleLogout}
             activeOpacity={0.85}
           >
             <Text style={styles.logoutText}>Sign out</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={{ height: isNewLearner ? 90 : 16 }} />
       </ScrollView>
+
+      {/* Sticky primary CTA for brand-new learners */}
+      <StickyPrimaryCTA visible={isNewLearner} onPress={handleFindMentor} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 32 },
+  content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24 },
 
   loadingScreen: {
     flex: 1,
@@ -738,78 +571,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingText: { marginTop: 12, color: "#9CA3AF", fontSize: 14 },
-
-  heroCard: {
-    backgroundColor: "#020617",
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    marginBottom: 12,
-  },
-  heroRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  greeting: { color: "#9CA3AF", fontSize: 13 },
-  name: { color: "#F9FAFB", fontSize: 22, fontWeight: "700", marginTop: 2 },
-  tagline: { color: "#64748B", fontSize: 12, marginTop: 6 },
-
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 999,
-    backgroundColor: "#0F172A",
-    borderWidth: 1,
-    borderColor: "#1F2937",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 12,
-  },
-  avatarText: { color: "#F97316", fontSize: 18, fontWeight: "700" },
-
-  heroBottomRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  levelColumn: { width: 64, alignItems: "flex-start" },
-  levelLabel: { color: "#94A3B8", fontSize: 11 },
-  levelValue: {
-    color: "#E5E7EB",
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-
-  progressColumn: { flex: 1, marginHorizontal: 12 },
-  progressHeader: { flexDirection: "row", justifyContent: "space-between" },
-  progressLabel: { color: "#94A3B8", fontSize: 11 },
-  progressValue: { color: "#CBD5F5", fontSize: 11 },
-  progressBarBackground: {
-    marginTop: 6,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "#0F172A",
-    overflow: "hidden",
-  },
-  progressBarFill: { height: "100%", backgroundColor: "#F97316" },
-
-  streakBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#F97316",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  streakEmoji: { marginRight: 4 },
-  streakText: { color: "#FED7AA", fontSize: 11, fontWeight: "600" },
-
-  pendingChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#334155",
-    backgroundColor: "#0B1120",
-  },
-  pendingChipText: { color: "#E5E7EB", fontSize: 11, fontWeight: "800" },
 
   errorBox: {
     backgroundColor: "#451A1A",
@@ -821,121 +582,36 @@ const styles = StyleSheet.create({
   },
   errorTitle: {
     color: "#FECACA",
-    fontWeight: "600",
+    fontWeight: "800",
     marginBottom: 4,
     fontSize: 13,
   },
   errorBody: { color: "#FECACA", fontSize: 12, marginBottom: 8 },
-  retryButton: {
+  retryBtn: {
     alignSelf: "flex-start",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "#B91C1C",
   },
-  retryText: { color: "#FEE2E2", fontSize: 12, fontWeight: "500" },
+  retryText: { color: "#FEE2E2", fontSize: 12, fontWeight: "800" },
 
-  statsRow: { flexDirection: "row", gap: 8, marginBottom: 18 },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#020617",
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-  },
-  statLabel: { color: "#94A3B8", fontSize: 11, marginBottom: 4 },
-  statValue: { color: "#F9FAFB", fontSize: 18, fontWeight: "700" },
-  statHint: { color: "#64748B", fontSize: 10, marginTop: 4 },
-
-  section: { marginBottom: 20 },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  sectionTitle: { color: "#F9FAFB", fontSize: 16, fontWeight: "600" },
-  sectionSubtitle: { color: "#64748B", fontSize: 12, marginBottom: 8 },
-  sectionAction: { color: "#60A5FA", fontSize: 13, fontWeight: "500" },
-
-  quickRow: { flexDirection: "row", gap: 10, marginTop: 6 },
-  quickCard: { flex: 1, borderRadius: 16, padding: 12, borderWidth: 1 },
-  quickPrimary: { backgroundColor: "#0F172A", borderColor: "#1D4ED8" },
-  quickSecondary: { backgroundColor: "#020617", borderColor: "#4B5563" },
-  quickEmoji: { fontSize: 20, marginBottom: 6 },
-  quickTitle: {
+  activityRow: { flexDirection: "row", gap: 10, marginTop: 8 },
+  activityCard: { flex: 1, borderRadius: 16, padding: 12, borderWidth: 1 },
+  activityPrimary: { backgroundColor: "#0F172A", borderColor: "#1D4ED8" },
+  activitySecondary: { backgroundColor: "#020617", borderColor: "#334155" },
+  activityEmoji: { fontSize: 20, marginBottom: 6 },
+  activityTitle: {
     color: "#F9FAFB",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "800",
     marginBottom: 4,
   },
-  quickText: { color: "#9CA3AF", fontSize: 12 },
+  activityText: { color: "#9CA3AF", fontSize: 12, lineHeight: 18 },
 
-  // ===== Inbox styles =====
-  inboxCard: {
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#111827",
-    borderRadius: 16,
-    padding: 12,
-  },
-  inboxRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#020617",
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    borderRadius: 14,
-    padding: 10,
-  },
-  inboxAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inboxAvatarText: { color: "#F97316", fontWeight: "900", fontSize: 14 },
-  inboxTopLine: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-  inboxName: { color: "#E5E7EB", fontWeight: "900", maxWidth: 210 },
-  inboxLast: { color: "#94A3B8", marginTop: 4, fontSize: 12 },
-  inboxTime: { color: "#64748B", fontSize: 11, fontWeight: "800" },
-  inboxBadge: {
-    backgroundColor: "#F97316",
-    borderWidth: 1,
-    borderColor: "#FB923C",
-    paddingHorizontal: 8,
-    height: 18,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  inboxBadgeText: { color: "#111827", fontWeight: "900", fontSize: 10 },
-  inboxEmptyTitle: { color: "#E5E7EB", fontWeight: "900" },
-  inboxEmptyBody: { color: "#94A3B8", marginTop: 6 },
-  inboxCta: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-    backgroundColor: "#F97316",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  inboxCtaText: { color: "#ffffff", fontWeight: "900" },
+  section: { marginBottom: 18 },
 
-  // ===== rest =====
-  horizontalChips: { paddingVertical: 4, paddingRight: 4, gap: 8 },
+  chipsRow: { paddingVertical: 4, paddingRight: 4, gap: 8 },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -945,7 +621,7 @@ const styles = StyleSheet.create({
     borderColor: "#1E293B",
     marginRight: 8,
   },
-  chipText: { color: "#E5E7EB", fontSize: 12 },
+  chipText: { color: "#E5E7EB", fontSize: 12, fontWeight: "700" },
 
   emptyCard: {
     backgroundColor: "#020617",
@@ -957,58 +633,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: "#E5E7EB",
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "900",
     marginBottom: 4,
   },
-  emptyText: { color: "#64748B", fontSize: 12 },
-
-  teachList: { gap: 8 },
-  teachCard: {
-    backgroundColor: "#020617",
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-  },
-  teachName: { color: "#F9FAFB", fontSize: 14, fontWeight: "600" },
-  teachLevel: { color: "#9CA3AF", fontSize: 12, marginTop: 2 },
-
-  availSummaryCard: {
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 10,
-  },
-  availSummaryTop: { color: "#E5E7EB", fontSize: 12, fontWeight: "600" },
-  availSummaryBottom: { color: "#94A3B8", fontSize: 11, marginTop: 4 },
-
-  availabilityList: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#111827",
-    backgroundColor: "#020617",
-    paddingVertical: 4,
-  },
-  availabilityRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#020617",
-  },
-  availabilityDay: { color: "#E5E7EB", fontSize: 13 },
-  availabilityTime: { color: "#9CA3AF", fontSize: 13 },
-
-  availMoreBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#0B1120",
-  },
-  availMoreText: { color: "#60A5FA", fontSize: 12, fontWeight: "600" },
+  emptyText: { color: "#94A3B8", fontSize: 12, lineHeight: 18 },
 
   primaryCta: {
     marginTop: 10,
@@ -1017,7 +645,63 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#F97316",
   },
-  primaryCtaText: { color: "#ffffff", fontWeight: "700", fontSize: 13 },
+  primaryCtaText: { color: "#0B1120", fontWeight: "900", fontSize: 13 },
+
+  availSummary: {
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+  },
+  availTop: { color: "#E5E7EB", fontSize: 12, fontWeight: "800" },
+  availBottom: {
+    color: "#94A3B8",
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: "700",
+  },
+
+  availList: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#111827",
+    backgroundColor: "#020617",
+    paddingVertical: 4,
+  },
+  availRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#020617",
+  },
+  availDay: { color: "#E5E7EB", fontSize: 13, fontWeight: "800" },
+  availTime: { color: "#9CA3AF", fontSize: 13, fontWeight: "700" },
+  availMoreBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#0B1120",
+  },
+  availMoreText: { color: "#60A5FA", fontSize: 12, fontWeight: "900" },
+
+  teachCard: {
+    backgroundColor: "#020617",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+  },
+  teachName: { color: "#F9FAFB", fontSize: 14, fontWeight: "900" },
+  teachLevel: {
+    color: "#9CA3AF",
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: "700",
+  },
 
   footerRow: {
     marginTop: 8,
@@ -1025,13 +709,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  footerHint: { color: "#6B7280", fontSize: 11 },
-  logoutButton: {
+  footerHint: { color: "#6B7280", fontSize: 11, fontWeight: "700" },
+  logoutBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#4B5563",
   },
-  logoutText: { color: "#E5E7EB", fontSize: 12 },
+  logoutText: { color: "#E5E7EB", fontSize: 12, fontWeight: "800" },
 });

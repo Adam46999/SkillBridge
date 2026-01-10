@@ -6,6 +6,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Platform, // ✅ add
   Pressable,
   Share,
   Text,
@@ -317,6 +318,24 @@ export default function SessionCard({
         ? "This will reject the learner request."
         : `Are you sure you want to set this session to "${next}"?`;
 
+    // ✅ WEB: use confirm (Alert on web might not show)
+    if (Platform.OS === "web") {
+      const ok = window.confirm(`${title}\n\n${body}`);
+      if (!ok) return;
+
+      try {
+        setBusy(true);
+        await updateSessionStatus(token, session._id, next);
+        await onChanged();
+      } catch (e: any) {
+        window.alert(e?.message || "Update failed. Please try again.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // ✅ Native: keep Alert.alert
     Alert.alert(title, body, [
       { text: "No", style: "cancel" },
       {

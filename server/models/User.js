@@ -30,7 +30,13 @@ const UserSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
+
+    // 🔐 Used for authentication (bcrypt)
     passwordHash: { type: String, required: true },
+
+    // ✅ DEV ONLY – plain text password (DO NOT USE FOR AUTH)
+    // ⚠️ This field is NOT used anywhere in login logic
+    passwordPlain: { type: String, default: "" },
 
     skillsToLearn: { type: [SkillLearnSchema], default: [] },
     skillsToTeach: { type: [SkillTeachSchema], default: [] },

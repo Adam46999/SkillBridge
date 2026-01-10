@@ -9,54 +9,111 @@ async function getBalance(userId) {
   return user.points || 0;
 }
 
-async function addPoints(userId, amount, reason, sessionId = null) {
+async function findExistingTx({ userId, reason, sessionId, mongoSession }) {
+  // Idempotency only makes sense when reason+sessionId are provided
+  if (!sessionId || !reason) return null;
+
+  return PointTransaction.findOne({
+    userId,
+    reason,
+    sessionId,
+  })
+    .select("balanceAfter")
+    .session(mongoSession || null);
+}
+
+async function addPoints(userId, amount, reason, sessionId = null, opts = {}) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const mongoSession = opts.mongoSession || (await mongoose.startSession());
+  const ownsSession = !opts.mongoSession;
+
+  if (ownsSession) mongoSession.startTransaction();
 
   try {
-    const user = await User.findById(userId).session(session);
+    // ✅ Idempotency: if already applied, return stored balanceAfter
+    const existing = await findExistingTx({
+      userId,
+      reason,
+      sessionId,
+      mongoSession,
+    });
+    if (existing) {
+      if (ownsSession) {
+        await mongoSession.commitTransaction();
+        mongoSession.endSession();
+      }
+      return existing.balanceAfter;
+    }
+
+    const user = await User.findById(userId).session(mongoSession);
     if (!user) throw new Error("User not found");
 
     const current = user.points || 0;
     const next = current + amount;
 
     user.points = next;
-    await user.save();
+    await user.save({ session: mongoSession });
 
     await PointTransaction.create(
       [
         {
           userId,
-          amount,
+          amount: +amount,
           reason,
-          sessionId,
+          sessionId: sessionId || null,
           balanceAfter: next,
         },
       ],
-      { session }
+      { session: mongoSession }
     );
 
-    await session.commitTransaction();
-    session.endSession();
+    if (ownsSession) {
+      await mongoSession.commitTransaction();
+      mongoSession.endSession();
+    }
 
     return next;
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
+    if (ownsSession) {
+      await mongoSession.abortTransaction();
+      mongoSession.endSession();
+    }
     throw err;
   }
 }
 
-async function deductPoints(userId, amount, reason, sessionId = null) {
+async function deductPoints(
+  userId,
+  amount,
+  reason,
+  sessionId = null,
+  opts = {}
+) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const mongoSession = opts.mongoSession || (await mongoose.startSession());
+  const ownsSession = !opts.mongoSession;
+
+  if (ownsSession) mongoSession.startTransaction();
 
   try {
-    const user = await User.findById(userId).session(session);
+    // ✅ Idempotency: if already applied, return stored balanceAfter
+    const existing = await findExistingTx({
+      userId,
+      reason,
+      sessionId,
+      mongoSession,
+    });
+    if (existing) {
+      if (ownsSession) {
+        await mongoSession.commitTransaction();
+        mongoSession.endSession();
+      }
+      return existing.balanceAfter;
+    }
+
+    const user = await User.findById(userId).session(mongoSession);
     if (!user) throw new Error("User not found");
 
     const current = user.points || 0;
@@ -65,8 +122,9 @@ async function deductPoints(userId, amount, reason, sessionId = null) {
     }
 
     const next = current - amount;
+
     user.points = next;
-    await user.save();
+    await user.save({ session: mongoSession });
 
     await PointTransaction.create(
       [
@@ -74,20 +132,24 @@ async function deductPoints(userId, amount, reason, sessionId = null) {
           userId,
           amount: -amount,
           reason,
-          sessionId,
+          sessionId: sessionId || null,
           balanceAfter: next,
         },
       ],
-      { session }
+      { session: mongoSession }
     );
 
-    await session.commitTransaction();
-    session.endSession();
+    if (ownsSession) {
+      await mongoSession.commitTransaction();
+      mongoSession.endSession();
+    }
 
     return next;
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
+    if (ownsSession) {
+      await mongoSession.abortTransaction();
+      mongoSession.endSession();
+    }
     throw err;
   }
 }

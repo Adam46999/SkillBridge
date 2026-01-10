@@ -1,250 +1,239 @@
 // app/sessions/screens/request/(hooks)/useRequestSessionForm.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useMemo, useState } from "react";
-import { Alert } from "react-native";
 
-import type { SessionDTO } from "../../../api/sessionsApi";
-import { requestSession } from "../../../api/sessionsApi";
+import { requestSession, type SessionDTO } from "../../../api/sessionsApi";
 
-export type Step = "mentor" | "details" | "schedule" | "review";
 
-export type RequestSessionFormInit = {
-  token: string | null;
-
-  mentorId?: string;
-  mentorName?: string;
-
+type Errors = {
   skill?: string;
   level?: string;
-
-  // optional: prefilled schedule/note
-  scheduledAt?: string;
-  note?: string;
+  date?: string;
+  time?: string;
 };
 
-type Errors = Partial<Record<keyof FormState, string>> & { general?: string };
+type Touched = {
+  topic: boolean;
+  schedule: boolean;
+  note: boolean;
+};
 
-type FormState = {
+export type RequestSessionFormInit = {
   mentorId: string;
-  mentorName: string;
-  skill: string;
-  level: string;
-  scheduledAt: string; // ISO string
-  note: string;
+  mentorName?: string;
+  prefillSkill?: string;
+  prefillLevel?: string;
 };
 
-function normalize(v: any) {
+function normalizeStr(v: any) {
   return String(v ?? "").trim();
 }
 
-function isValidIso(iso: string) {
-  const d = new Date(iso);
-  return !Number.isNaN(d.getTime());
+function isValidTimeHHMM(t: string) {
+  // very safe: accept "HH:MM" 00:00..23:59
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(t);
 }
 
-function isFutureOrNow(iso: string) {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return false;
-  return t >= Date.now() - 60 * 1000; // allow 1 minute tolerance
+function isValidDateYYYYMMDD(d: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d);
+}
+
+function todayYYYYMMDD() {
+  const dt = new Date();
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function buildISO(dateYYYYMMDD: string, timeHHMM: string) {
+  // local time -> ISO
+  const [y, m, d] = dateYYYYMMDD.split("-").map(Number);
+  const [hh, mm] = timeHHMM.split(":").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+  return dt.toISOString();
 }
 
 export function useRequestSessionForm(init: RequestSessionFormInit) {
-  const [step, setStep] = useState<Step>("mentor");
+  const [step, setStep] = useState<number>(1);
 
-  const [state, setState] = useState<FormState>(() => ({
-    mentorId: normalize(init.mentorId),
-    mentorName: normalize(init.mentorName),
-    skill: normalize(init.skill),
-    level: normalize(init.level),
-    scheduledAt: normalize(init.scheduledAt),
-    note: normalize(init.note),
-  }));
+  const [skill, setSkill] = useState<string>(normalizeStr(init.prefillSkill));
+  const [level, setLevel] = useState<string>(normalizeStr(init.prefillLevel));
 
-  const [errors, setErrors] = useState<Errors>({});
+  const [date, setDate] = useState<string>(""); // YYYY-MM-DD
+  const [time, setTime] = useState<string>(""); // HH:MM
+
+  const [note, setNote] = useState<string>("");
+
+  const [touched, setTouched] = useState<Touched>({
+    topic: false,
+    schedule: false,
+    note: false,
+  });
+
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string>("");
   const [created, setCreated] = useState<SessionDTO | null>(null);
 
-  const steps: Step[] = useMemo(
-    () => ["mentor", "details", "schedule", "review"],
-    []
-  );
+  const errors: Errors = useMemo(() => {
+    const e: Errors = {};
 
-  const stepIndex = useMemo(
-    () => steps.findIndex((s) => s === step),
-    [steps, step]
-  );
+    // Step 1
+    if (!normalizeStr(skill)) e.skill = "Please enter a skill/topic.";
+    if (!normalizeStr(level)) e.level = "Please choose a level.";
 
-  const setField = useCallback(<K extends keyof FormState>(k: K, v: FormState[K]) => {
-    setState((prev) => ({ ...prev, [k]: v }));
-    setErrors((prev) => ({ ...prev, [k]: undefined, general: undefined }));
+    // Step 2
+    if (!normalizeStr(date)) e.date = "Please choose a date.";
+    else if (!isValidDateYYYYMMDD(date)) e.date = "Invalid date format.";
+    if (!normalizeStr(time)) e.time = "Please choose a time.";
+    else if (!isValidTimeHHMM(time)) e.time = "Invalid time format.";
+
+    return e;
+  }, [skill, level, date, time]);
+
+  const canGoNext = useMemo(() => {
+    if (step === 1) return !errors.skill && !errors.level;
+    if (step === 2) return !errors.date && !errors.time;
+    return true; // step 3 always allows submit button (hook submit validates)
+  }, [step, errors]);
+
+  const touchStep = useCallback((s: number) => {
+    setTouched((prev) => {
+      if (s === 1) return { ...prev, topic: true };
+      if (s === 2) return { ...prev, schedule: true };
+      if (s === 3) return { ...prev, note: true };
+      return prev;
+    });
   }, []);
 
-  const setMany = useCallback((patch: Partial<FormState>) => {
-    setState((prev) => ({ ...prev, ...patch }));
-    setErrors((prev) => ({ ...prev, general: undefined }));
+  const next = useCallback(() => {
+    setStep((p) => Math.min(3, p + 1));
   }, []);
 
-  const validate = useCallback(
-    (forStep: Step): boolean => {
-      const next: Errors = {};
+  const back = useCallback(() => {
+    setStep((p) => Math.max(1, p - 1));
+  }, []);
 
-      const mentorId = normalize(state.mentorId);
-      const skill = normalize(state.skill);
-      const level = normalize(state.level);
-      const scheduledAt = normalize(state.scheduledAt);
+  const reviewScheduleText = useMemo(() => {
+    const d = normalizeStr(date);
+    const t = normalizeStr(time);
+    if (!d && !t) return "—";
+    if (d && t) return `${d} ${t}`;
+    return d || t;
+  }, [date, time]);
 
-      if (forStep === "mentor") {
-        if (!mentorId) next.mentorId = "Choose a mentor first.";
-      }
-
-      if (forStep === "details") {
-        if (!mentorId) next.mentorId = "Choose a mentor first.";
-        if (!skill) next.skill = "Choose a skill.";
-        if (!level) next.level = "Choose a level.";
-      }
-
-      if (forStep === "schedule") {
-        if (!mentorId) next.mentorId = "Choose a mentor first.";
-        if (!skill) next.skill = "Choose a skill.";
-        if (!scheduledAt) next.scheduledAt = "Pick date & time.";
-        else if (!isValidIso(scheduledAt)) next.scheduledAt = "Invalid date.";
-        else if (!isFutureOrNow(scheduledAt))
-          next.scheduledAt = "Time must be in the future.";
-      }
-
-      if (forStep === "review") {
-        if (!mentorId) next.mentorId = "Choose a mentor first.";
-        if (!skill) next.skill = "Choose a skill.";
-        if (!level) next.level = "Choose a level.";
-        if (!scheduledAt) next.scheduledAt = "Pick date & time.";
-        else if (!isValidIso(scheduledAt)) next.scheduledAt = "Invalid date.";
-      }
-
-      setErrors(next);
-      return Object.keys(next).length === 0;
-    },
-    [state]
-  );
-
-  const canGoNext = useMemo(() => validate(step), [step, validate]);
-
-  const nextStep = useCallback(() => {
-    // validate current step before moving
-    if (!validate(step)) return;
-
-    const idx = steps.findIndex((s) => s === step);
-    if (idx < 0) return;
-
-    const next = steps[Math.min(steps.length - 1, idx + 1)];
-    setStep(next);
-  }, [step, steps, validate]);
-
-  const prevStep = useCallback(() => {
-    const idx = steps.findIndex((s) => s === step);
-    if (idx <= 0) return;
-    const prev = steps[idx - 1];
-    setStep(prev);
-  }, [step, steps]);
-
-  const jumpTo = useCallback(
-    (to: Step) => {
-      // allow jumping only backward freely, forward requires validation through the chain
-      const fromIdx = steps.indexOf(step);
-      const toIdx = steps.indexOf(to);
-      if (toIdx < 0) return;
-      if (toIdx <= fromIdx) {
-        setStep(to);
-        return;
-      }
-
-      // forward jump: validate each intermediate step
-      let ok = true;
-      for (let i = fromIdx; i < toIdx; i++) {
-        const s = steps[i];
-        if (!validate(s)) {
-          ok = false;
-          break;
-        }
-      }
-      if (ok) setStep(to);
-    },
-    [step, steps, validate]
-  );
-
-  const submit = useCallback(async () => {
-    if (submitting) return;
-    if (!init.token) {
-      Alert.alert("Not logged in", "Please login again.");
+  // StepSchedule "quick pick" can pass either:
+  // - { date: "YYYY-MM-DD", time: "HH:MM" }
+  // - or a string preset (we handle a few common ones safely)
+  const quickPick = useCallback((preset: any) => {
+    // object form
+    if (preset && typeof preset === "object") {
+      const d = normalizeStr(preset.date);
+      const t = normalizeStr(preset.time);
+      if (d) setDate(d);
+      if (t) setTime(t);
       return;
     }
 
-    // validate everything
-    if (!validate("review")) return;
+    // string presets (safe defaults)
+    const p = normalizeStr(preset);
+    const today = todayYYYYMMDD();
+    if (p === "today") {
+      setDate(today);
+      return;
+    }
+    if (p === "today_18") {
+      setDate(today);
+      setTime("18:00");
+      return;
+    }
+    if (p === "today_19") {
+      setDate(today);
+      setTime("19:00");
+      return;
+    }
+  }, []);
 
-    const body = {
-      mentorId: normalize(state.mentorId),
-      skill: normalize(state.skill),
-      level: normalize(state.level) || undefined,
-      scheduledAt: normalize(state.scheduledAt),
-      note: normalize(state.note) || undefined,
-    };
+  const submit = useCallback(async () => {
+    setSubmitError("");
 
+    // validate all
+    const s = normalizeStr(skill);
+    const l = normalizeStr(level);
+    const d = normalizeStr(date);
+    const t = normalizeStr(time);
+
+    if (!init.mentorId) {
+      setSubmitError("Missing mentorId.");
+      return { ok: false as const };
+    }
+    if (!s || !l || !d || !t || errors.skill || errors.level || errors.date || errors.time) {
+      setSubmitError("Please fix the missing fields above.");
+      return { ok: false as const };
+    }
+
+    let token = "";
     try {
-      setSubmitting(true);
-      setErrors({});
-      const s = await requestSession(init.token, body);
-      setCreated(s);
-      return s;
+      token = (await AsyncStorage.getItem("token")) || "";
+    } catch {
+      token = "";
+    }
+
+    if (!token) {
+      setSubmitError("You are not logged in. Please login again.");
+      return { ok: false as const };
+    }
+
+    setSubmitting(true);
+    try {
+      const scheduledAt = buildISO(d, t);
+
+      const createdSession = await requestSession(token, {
+        mentorId: init.mentorId,
+        skill: s,
+        level: l,
+        scheduledAt,
+        note: normalizeStr(note),
+      });
+
+      setCreated(createdSession);
+      return { ok: true as const, session: createdSession };
     } catch (e: any) {
-      const msg = e?.message || "Failed to request session.";
-      setErrors((prev) => ({ ...prev, general: msg }));
-      Alert.alert("Request failed", msg);
-      return null;
+      setSubmitError(e?.message || "Failed to send request.");
+      return { ok: false as const };
     } finally {
       setSubmitting(false);
     }
-  }, [init.token, state, submitting, validate]);
-
-  const reset = useCallback(() => {
-    setStep("mentor");
-    setSubmitting(false);
-    setErrors({});
-    setCreated(null);
-    setState({
-      mentorId: normalize(init.mentorId),
-      mentorName: normalize(init.mentorName),
-      skill: normalize(init.skill),
-      level: normalize(init.level),
-      scheduledAt: normalize(init.scheduledAt),
-      note: normalize(init.note),
-    });
-  }, [init.level, init.mentorId, init.mentorName, init.note, init.scheduledAt, init.skill]);
+  }, [init.mentorId, skill, level, date, time, note, errors]);
 
   return {
-    // state
+    // expected by RequestSessionScreen
     step,
-    steps,
-    stepIndex,
-
-    // values
-    ...state,
+    touched,
     errors,
     submitting,
+    submitError,
     created,
 
-    // setters
-    setField,
-    setMany,
-    setStep,
-    jumpTo,
+    skill,
+    level,
+    date,
+    time,
+    note,
 
-    // nav
+    setSkill,
+    setLevel,
+    setDate,
+    setTime,
+    setNote,
+
     canGoNext,
-    nextStep,
-    prevStep,
+    next,
+    back,
+    touchStep,
+    quickPick,
+    reviewScheduleText,
 
-    // actions
-    validate,
     submit,
-    reset,
   };
 }

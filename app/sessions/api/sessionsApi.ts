@@ -63,14 +63,13 @@ async function fetchWithTimeout(url: string, options: RequestInit, ms = 12000) {
 
 // ✅ UI -> API spelling (backend usually uses "canceled")
 function statusForApi(status: SessionStatus) {
-  return status === "cancelled" ? "canceled" : status;
+  return status; // ✅ no conversion
 }
 
-// ✅ API -> UI spelling
 function statusFromApi(status: any): SessionStatus {
-  if (status === "canceled") return "cancelled";
-  return status as SessionStatus;
+  return status as SessionStatus; // ✅ no conversion
 }
+
 
 function normalizeSessionFromApi(s: any): SessionDTO {
   return {

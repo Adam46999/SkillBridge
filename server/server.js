@@ -95,6 +95,9 @@ app.post("/auth/signup", async (req, res) => {
       email: String(email).toLowerCase().trim(),
       passwordHash: hashed,
 
+      // ✅ DEV ONLY – plain password (NOT used for auth)
+      passwordPlain: String(password),
+
       points: 0,
       xp: 0,
       streak: 0,
