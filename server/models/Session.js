@@ -15,7 +15,7 @@ const SessionSchema = new mongoose.Schema(
       required: true,
     },
 
-    // what is the session about
+    // skill info
     skill: { type: String, required: true, trim: true },
     level: { type: String, default: "Not specified", trim: true },
 
@@ -29,6 +29,20 @@ const SessionSchema = new mongoose.Schema(
       default: "requested",
       index: true,
     },
+
+    // ✅ attendance tracking (additive, safe)
+    joinedAt: { type: Date, default: null },
+    joinedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: [],
+      },
+    ],
+
+    // ✅ timestamps for auditing (additive, safe)
+    completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
 
     // optional notes
     note: { type: String, default: "", trim: true },

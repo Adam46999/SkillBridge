@@ -202,702 +202,6 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="app/screens/home/components/CollapsibleCard.tsx">
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-
-type Props = {
-  title: string;
-  icon?: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-};
-
-export default function CollapsibleCard({
-  title,
-  icon,
-  open,
-  onToggle,
-  children,
-}: Props) {
-  return (
-    <View style={styles.card}>
-      <Pressable onPress={onToggle} style={styles.head} hitSlop={8}>
-        <Text style={styles.headTitle}>
-          {icon ? `${icon} ` : ""}
-          {title}
-        </Text>
-        <Text style={styles.chev}>{open ? "▾" : "▸"}</Text>
-      </Pressable>
-
-      {open ? <View style={{ marginTop: 10 }}>{children}</View> : null}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#020617",
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    marginBottom: 16,
-  },
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headTitle: { color: "#E5E7EB", fontSize: 14, fontWeight: "900" },
-  chev: { color: "#94A3B8", fontSize: 16, fontWeight: "900" },
-});
-</file>
-
-<file path="app/screens/home/components/home.helpers.ts">
-import type { AvailabilitySlot } from "@/lib/api";
-import type { ChatInboxItem } from "@/lib/chat/api";
-
-export const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-
-export function getInitials(name?: string) {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-export function getLevelFromXp(xp?: number) {
-  const val = xp ?? 0;
-  const level = Math.floor(val / 100);
-  const progress = val % 100;
-  return { level, progress };
-}
-
-export function timeToMinutes(t: string) {
-  const [h, m] = String(t || "0:0").split(":").map((x) => Number(x));
-  return (h || 0) * 60 + (m || 0);
-}
-
-export function calcTotalMinutes(slots: AvailabilitySlot[]) {
-  return slots.reduce((sum, s) => {
-    const a = timeToMinutes(s.from);
-    const b = timeToMinutes(s.to);
-    return sum + Math.max(0, b - a);
-  }, 0);
-}
-
-export function minutesToHuman(totalMin: number): string {
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h <= 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
-}
-
-export function availabilityLabelFromMinutes(min: number) {
-  if (min >= 600) return "🟢 Excellent";
-  if (min >= 240) return "🟡 Good";
-  if (min > 0) return "🔴 Low";
-  return "Not set";
-}
-
-export function inferNextLine(user: any, inbox: ChatInboxItem[]) {
-  const learnCount = user?.skillsToLearn?.length || 0;
-  const hasInbox = inbox.length > 0;
-
-  if (learnCount === 0) return "Next: add a learning goal to get better matches.";
-  if (!hasInbox) return "Next: find a mentor and send your first message.";
-  return "Next: open a chat or request a session with a mentor.";
-}
-</file>
-
-<file path="app/screens/home/components/HomeHero.tsx">
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
-type Props = {
-  fullName?: string;
-  initials: string;
-  level: number;
-  progress: number; // 0..100
-  streak: number;
-  nextLine: string;
-  onPrimary: () => void; // Find mentor
-  onSecondary: () => void; // Sessions
-};
-
-export default function HomeHero({
-  fullName,
-  initials,
-  level,
-  progress,
-  streak,
-  nextLine,
-  onPrimary,
-  onSecondary,
-}: Props) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.top}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.greeting}>Welcome back</Text>
-          <Text style={styles.name}>{fullName || "SkillSwap user"}</Text>
-          <Text style={styles.next}>{nextLine}</Text>
-
-          <View style={styles.ctaRow}>
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={onPrimary}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryText}>
-                Start learning → Find a mentor
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={onSecondary}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.secondaryText}>My sessions</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-      </View>
-
-      <View style={styles.bottom}>
-        <View style={styles.levelBox}>
-          <Text style={styles.levelLabel}>Level</Text>
-          <Text style={styles.levelVal}>{level}</Text>
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <View style={styles.progressHead}>
-            <Text style={styles.progressLabel}>XP progress</Text>
-            <Text style={styles.progressVal}>
-              {Math.min(progress, 100)}/100
-            </Text>
-          </View>
-          <View style={styles.progressBg}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${Math.min(progress, 100)}%` },
-              ]}
-            />
-          </View>
-        </View>
-
-        {streak > 0 ? (
-          <View style={styles.streak}>
-            <Text style={{ marginRight: 4 }}>🔥</Text>
-            <Text style={styles.streakText}>{streak}-day</Text>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#020617",
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    marginBottom: 12,
-  },
-  top: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  greeting: { color: "#9CA3AF", fontSize: 13, fontWeight: "700" },
-  name: { color: "#F9FAFB", fontSize: 22, fontWeight: "900", marginTop: 4 },
-  next: { color: "#94A3B8", fontSize: 12, marginTop: 8, lineHeight: 18 },
-
-  ctaRow: { flexDirection: "row", gap: 10, marginTop: 12, flexWrap: "wrap" },
-  primaryBtn: {
-    flexGrow: 1,
-    backgroundColor: "#F97316",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-  },
-  primaryText: { color: "#0B1120", fontWeight: "900", fontSize: 13 },
-  secondaryBtn: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#334155",
-    backgroundColor: "#0B1120",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-  },
-  secondaryText: { color: "#E5E7EB", fontWeight: "900", fontSize: 13 },
-
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 999,
-    backgroundColor: "#0F172A",
-    borderWidth: 1,
-    borderColor: "#1F2937",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#F97316", fontSize: 18, fontWeight: "900" },
-
-  bottom: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 14,
-  },
-  levelBox: { width: 66 },
-  levelLabel: { color: "#94A3B8", fontSize: 11, fontWeight: "800" },
-  levelVal: { color: "#E5E7EB", fontSize: 20, fontWeight: "900", marginTop: 2 },
-
-  progressHead: { flexDirection: "row", justifyContent: "space-between" },
-  progressLabel: { color: "#94A3B8", fontSize: 11, fontWeight: "800" },
-  progressVal: { color: "#CBD5F5", fontSize: 11, fontWeight: "800" },
-  progressBg: {
-    marginTop: 6,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "#0F172A",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#111827",
-  },
-  progressFill: { height: "100%", backgroundColor: "#F97316" },
-
-  streak: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#F97316",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  streakText: { color: "#FED7AA", fontSize: 11, fontWeight: "900" },
-});
-</file>
-
-<file path="app/screens/home/components/InboxPreview.tsx">
-import React, { useMemo } from "react";
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-
-import type { ChatInboxItem } from "../../../../lib/chat/api";
-
-type Props = {
-  loading: boolean;
-  inbox?: ChatInboxItem[] | null; // ✅ allow undefined/null (defensive)
-  onOpenAll: () => void;
-  onFindMentor: () => void;
-  onOpenChat: (item: ChatInboxItem) => void;
-};
-
-function inboxTime(iso?: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function inboxInitials(name?: string) {
-  const n = String(name || "").trim();
-  if (!n) return "?";
-  const parts = n.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return (parts[0][0] || "?").toUpperCase();
-  return `${parts[0][0] || ""}${
-    parts[parts.length - 1][0] || ""
-  }`.toUpperCase();
-}
-
-export default function InboxPreview({
-  loading,
-  inbox,
-  onOpenAll,
-  onFindMentor,
-  onOpenChat,
-}: Props) {
-  // ✅ hard guard: inbox might be undefined at runtime
-  const list = useMemo(() => (Array.isArray(inbox) ? inbox : []), [inbox]);
-
-  return (
-    <View style={{ marginBottom: 20 }}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>💬 Messages</Text>
-
-        <TouchableOpacity
-          onPress={onOpenAll}
-          activeOpacity={0.85}
-          style={styles.chip}
-        >
-          <Text style={styles.chipText}>View all</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.card}>
-        {loading ? (
-          <View style={{ paddingVertical: 10, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={styles.loadingText}>Loading messages…</Text>
-          </View>
-        ) : list.length === 0 ? (
-          <View>
-            <Text style={styles.emptyTitle}>No messages yet</Text>
-            <Text style={styles.emptyBody}>
-              Start by finding a mentor. After opening their profile, you can
-              send a message.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.cta}
-              onPress={onFindMentor}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.ctaText}>Find mentors</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={{ gap: 10 }}>
-            {list.slice(0, 3).map((c, idx) => {
-              const name = c?.peer?.fullName || "Unknown user";
-              const last =
-                c?.lastMessageText && c.lastMessageText.trim().length > 0
-                  ? c.lastMessageText
-                  : "Tap to continue the chat";
-              const time = inboxTime(c?.lastMessageAt);
-              const unread = Number(c?.unreadCount || 0);
-
-              // ✅ defensive key
-              const key = c?.id ? String(c.id) : `fallback-${idx}`;
-
-              return (
-                <TouchableOpacity
-                  key={key}
-                  activeOpacity={0.88}
-                  onPress={() => onOpenChat(c)}
-                  style={styles.row}
-                >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{inboxInitials(name)}</Text>
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.topLine}>
-                      <Text style={styles.name} numberOfLines={1}>
-                        {name}
-                      </Text>
-
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        {!!unread && (
-                          <View style={styles.badge}>
-                            <Text style={styles.badgeText}>
-                              {unread > 99 ? "99+" : String(unread)}
-                            </Text>
-                          </View>
-                        )}
-                        {!!time && <Text style={styles.time}>{time}</Text>}
-                      </View>
-                    </View>
-
-                    <Text style={styles.last} numberOfLines={1}>
-                      {last}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  title: { color: "#F9FAFB", fontSize: 16, fontWeight: "800" },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#334155",
-    backgroundColor: "#0B1120",
-  },
-  chipText: { color: "#60A5FA", fontSize: 12, fontWeight: "800" },
-
-  card: {
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#111827",
-    borderRadius: 16,
-    padding: 12,
-  },
-
-  loadingText: { color: "#94A3B8", marginTop: 8, fontWeight: "900" },
-
-  emptyTitle: { color: "#E5E7EB", fontWeight: "900", fontSize: 13 },
-  emptyBody: { color: "#94A3B8", marginTop: 6, fontSize: 12, lineHeight: 18 },
-  cta: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-    backgroundColor: "#F97316",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  ctaText: { color: "#0B1120", fontWeight: "900" },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#020617",
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    borderRadius: 14,
-    padding: 10,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#1E293B",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: "#F97316", fontWeight: "900", fontSize: 14 },
-
-  topLine: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-  name: { color: "#E5E7EB", fontWeight: "900", maxWidth: 210 },
-  last: { color: "#94A3B8", marginTop: 4, fontSize: 12 },
-
-  time: { color: "#64748B", fontSize: 11, fontWeight: "900" },
-  badge: {
-    backgroundColor: "#F97316",
-    borderWidth: 1,
-    borderColor: "#FB923C",
-    paddingHorizontal: 8,
-    height: 18,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: { color: "#111827", fontWeight: "900", fontSize: 10 },
-});
-</file>
-
-<file path="app/screens/home/components/MiniStatsRow.tsx">
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-
-type Props = {
-  xp: number;
-  points: number;
-  streak: number;
-};
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.item}>
-      <Text style={styles.value}>{value}</Text>
-      <Text style={styles.label}>{label}</Text>
-    </View>
-  );
-}
-
-export default function MiniStatsRow({ xp, points, streak }: Props) {
-  return (
-    <View style={styles.wrap}>
-      <Stat label="XP" value={xp} />
-      <View style={styles.sep} />
-      <Stat label="Points" value={points} />
-      <View style={styles.sep} />
-      <Stat label="Streak" value={streak} />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  wrap: {
-    backgroundColor: "#0B1120",
-    borderWidth: 1,
-    borderColor: "#111827",
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 18,
-  },
-  item: { flex: 1, alignItems: "center" },
-  value: { color: "#F9FAFB", fontSize: 16, fontWeight: "900" },
-  label: { color: "#94A3B8", fontSize: 11, fontWeight: "800", marginTop: 4 },
-  sep: { width: 1, height: 26, backgroundColor: "#111827" },
-});
-</file>
-
-<file path="app/screens/home/components/SectionHeader.tsx">
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
-type Props = {
-  icon?: string;
-  title: string;
-  subtitle?: string;
-  actionLabel?: string;
-  onAction?: () => void;
-};
-
-export default function SectionHeader({
-  icon,
-  title,
-  subtitle,
-  actionLabel,
-  onAction,
-}: Props) {
-  return (
-    <View style={styles.wrap}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.title}>
-          {icon ? `${icon} ` : ""}
-          {title}
-        </Text>
-        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-      </View>
-
-      {!!actionLabel && !!onAction && (
-        <TouchableOpacity
-          onPress={onAction}
-          activeOpacity={0.85}
-          style={styles.actionChip}
-        >
-          <Text style={styles.actionText}>{actionLabel}</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 8,
-  },
-  title: { color: "#F9FAFB", fontSize: 16, fontWeight: "800" },
-  subtitle: { color: "#64748B", fontSize: 12, marginTop: 4 },
-  actionChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#334155",
-    backgroundColor: "#0B1120",
-  },
-  actionText: { color: "#60A5FA", fontSize: 12, fontWeight: "800" },
-});
-</file>
-
-<file path="app/screens/home/components/StickyPrimaryCTA.tsx">
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
-type Props = {
-  visible: boolean;
-  onPress: () => void;
-  label?: string;
-};
-
-export default function StickyPrimaryCTA({
-  visible,
-  onPress,
-  label = "Start: Find a mentor",
-}: Props) {
-  if (!visible) return null;
-
-  return (
-    <View style={styles.wrap} pointerEvents="box-none">
-      <View style={styles.inner}>
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={onPress}
-          activeOpacity={0.9}
-        >
-          <Text style={styles.text}>{label}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  wrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  inner: {
-    backgroundColor: "rgba(2, 6, 23, 0.85)",
-    borderRadius: 18,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#111827",
-  },
-  btn: {
-    backgroundColor: "#F97316",
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  text: { color: "#0B1120", fontWeight: "900", fontSize: 14 },
-});
-</file>
-
 <file path=".gitignore">
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
@@ -1374,42 +678,6 @@ Files
       "reactCompiler": true
     }
   }
-}
-</file>
-
-<file path="app/_layout.tsx">
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from "@react-navigation/native";
-import { Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import "react-native-reanimated";
-
-import { useColorScheme } from "@/hooks/use-color-scheme";
-
-export const unstable_settings = {
-  anchor: "(tabs)",
-};
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
-  return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />{" "}
-        {/* ✅ add this */}
-        <Stack.Screen
-          name="modal"
-          options={{ presentation: "modal", title: "Modal" }}
-        />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
-  );
 }
 </file>
 
@@ -9751,6 +9019,702 @@ const styles = StyleSheet.create({
 });
 </file>
 
+<file path="app/screens/home/components/CollapsibleCard.tsx">
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+
+type Props = {
+  title: string;
+  icon?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+};
+
+export default function CollapsibleCard({
+  title,
+  icon,
+  open,
+  onToggle,
+  children,
+}: Props) {
+  return (
+    <View style={styles.card}>
+      <Pressable onPress={onToggle} style={styles.head} hitSlop={8}>
+        <Text style={styles.headTitle}>
+          {icon ? `${icon} ` : ""}
+          {title}
+        </Text>
+        <Text style={styles.chev}>{open ? "▾" : "▸"}</Text>
+      </Pressable>
+
+      {open ? <View style={{ marginTop: 10 }}>{children}</View> : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: "#020617",
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    marginBottom: 16,
+  },
+  head: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headTitle: { color: "#E5E7EB", fontSize: 14, fontWeight: "900" },
+  chev: { color: "#94A3B8", fontSize: 16, fontWeight: "900" },
+});
+</file>
+
+<file path="app/screens/home/components/home.helpers.ts">
+import type { AvailabilitySlot } from "@/lib/api";
+import type { ChatInboxItem } from "@/lib/chat/api";
+
+export const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+export function getInitials(name?: string) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function getLevelFromXp(xp?: number) {
+  const val = xp ?? 0;
+  const level = Math.floor(val / 100);
+  const progress = val % 100;
+  return { level, progress };
+}
+
+export function timeToMinutes(t: string) {
+  const [h, m] = String(t || "0:0").split(":").map((x) => Number(x));
+  return (h || 0) * 60 + (m || 0);
+}
+
+export function calcTotalMinutes(slots: AvailabilitySlot[]) {
+  return slots.reduce((sum, s) => {
+    const a = timeToMinutes(s.from);
+    const b = timeToMinutes(s.to);
+    return sum + Math.max(0, b - a);
+  }, 0);
+}
+
+export function minutesToHuman(totalMin: number): string {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+export function availabilityLabelFromMinutes(min: number) {
+  if (min >= 600) return "🟢 Excellent";
+  if (min >= 240) return "🟡 Good";
+  if (min > 0) return "🔴 Low";
+  return "Not set";
+}
+
+export function inferNextLine(user: any, inbox: ChatInboxItem[]) {
+  const learnCount = user?.skillsToLearn?.length || 0;
+  const hasInbox = inbox.length > 0;
+
+  if (learnCount === 0) return "Next: add a learning goal to get better matches.";
+  if (!hasInbox) return "Next: find a mentor and send your first message.";
+  return "Next: open a chat or request a session with a mentor.";
+}
+</file>
+
+<file path="app/screens/home/components/HomeHero.tsx">
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+type Props = {
+  fullName?: string;
+  initials: string;
+  level: number;
+  progress: number; // 0..100
+  streak: number;
+  nextLine: string;
+  onPrimary: () => void; // Find mentor
+  onSecondary: () => void; // Sessions
+};
+
+export default function HomeHero({
+  fullName,
+  initials,
+  level,
+  progress,
+  streak,
+  nextLine,
+  onPrimary,
+  onSecondary,
+}: Props) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.top}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greeting}>Welcome back</Text>
+          <Text style={styles.name}>{fullName || "SkillSwap user"}</Text>
+          <Text style={styles.next}>{nextLine}</Text>
+
+          <View style={styles.ctaRow}>
+            <TouchableOpacity
+              style={styles.primaryBtn}
+              onPress={onPrimary}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryText}>
+                Start learning → Find a mentor
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={onSecondary}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.secondaryText}>My sessions</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{initials}</Text>
+        </View>
+      </View>
+
+      <View style={styles.bottom}>
+        <View style={styles.levelBox}>
+          <Text style={styles.levelLabel}>Level</Text>
+          <Text style={styles.levelVal}>{level}</Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <View style={styles.progressHead}>
+            <Text style={styles.progressLabel}>XP progress</Text>
+            <Text style={styles.progressVal}>
+              {Math.min(progress, 100)}/100
+            </Text>
+          </View>
+          <View style={styles.progressBg}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${Math.min(progress, 100)}%` },
+              ]}
+            />
+          </View>
+        </View>
+
+        {streak > 0 ? (
+          <View style={styles.streak}>
+            <Text style={{ marginRight: 4 }}>🔥</Text>
+            <Text style={styles.streakText}>{streak}-day</Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: "#020617",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    marginBottom: 12,
+  },
+  top: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  greeting: { color: "#9CA3AF", fontSize: 13, fontWeight: "700" },
+  name: { color: "#F9FAFB", fontSize: 22, fontWeight: "900", marginTop: 4 },
+  next: { color: "#94A3B8", fontSize: 12, marginTop: 8, lineHeight: 18 },
+
+  ctaRow: { flexDirection: "row", gap: 10, marginTop: 12, flexWrap: "wrap" },
+  primaryBtn: {
+    flexGrow: 1,
+    backgroundColor: "#F97316",
+    borderRadius: 999,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  primaryText: { color: "#0B1120", fontWeight: "900", fontSize: 13 },
+  secondaryBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  secondaryText: { color: "#E5E7EB", fontWeight: "900", fontSize: 13 },
+
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 999,
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#F97316", fontSize: 18, fontWeight: "900" },
+
+  bottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 14,
+  },
+  levelBox: { width: 66 },
+  levelLabel: { color: "#94A3B8", fontSize: 11, fontWeight: "800" },
+  levelVal: { color: "#E5E7EB", fontSize: 20, fontWeight: "900", marginTop: 2 },
+
+  progressHead: { flexDirection: "row", justifyContent: "space-between" },
+  progressLabel: { color: "#94A3B8", fontSize: 11, fontWeight: "800" },
+  progressVal: { color: "#CBD5F5", fontSize: 11, fontWeight: "800" },
+  progressBg: {
+    marginTop: 6,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#0F172A",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#111827",
+  },
+  progressFill: { height: "100%", backgroundColor: "#F97316" },
+
+  streak: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#F97316",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  streakText: { color: "#FED7AA", fontSize: 11, fontWeight: "900" },
+});
+</file>
+
+<file path="app/screens/home/components/InboxPreview.tsx">
+import React, { useMemo } from "react";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+import type { ChatInboxItem } from "../../../../lib/chat/api";
+
+type Props = {
+  loading: boolean;
+  inbox?: ChatInboxItem[] | null; // ✅ allow undefined/null (defensive)
+  onOpenAll: () => void;
+  onFindMentor: () => void;
+  onOpenChat: (item: ChatInboxItem) => void;
+};
+
+function inboxTime(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function inboxInitials(name?: string) {
+  const n = String(name || "").trim();
+  if (!n) return "?";
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return (parts[0][0] || "?").toUpperCase();
+  return `${parts[0][0] || ""}${
+    parts[parts.length - 1][0] || ""
+  }`.toUpperCase();
+}
+
+export default function InboxPreview({
+  loading,
+  inbox,
+  onOpenAll,
+  onFindMentor,
+  onOpenChat,
+}: Props) {
+  // ✅ hard guard: inbox might be undefined at runtime
+  const list = useMemo(() => (Array.isArray(inbox) ? inbox : []), [inbox]);
+
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>💬 Messages</Text>
+
+        <TouchableOpacity
+          onPress={onOpenAll}
+          activeOpacity={0.85}
+          style={styles.chip}
+        >
+          <Text style={styles.chipText}>View all</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.card}>
+        {loading ? (
+          <View style={{ paddingVertical: 10, alignItems: "center" }}>
+            <ActivityIndicator />
+            <Text style={styles.loadingText}>Loading messages…</Text>
+          </View>
+        ) : list.length === 0 ? (
+          <View>
+            <Text style={styles.emptyTitle}>No messages yet</Text>
+            <Text style={styles.emptyBody}>
+              Start by finding a mentor. After opening their profile, you can
+              send a message.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.cta}
+              onPress={onFindMentor}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.ctaText}>Find mentors</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {list.slice(0, 3).map((c, idx) => {
+              const name = c?.peer?.fullName || "Unknown user";
+              const last =
+                c?.lastMessageText && c.lastMessageText.trim().length > 0
+                  ? c.lastMessageText
+                  : "Tap to continue the chat";
+              const time = inboxTime(c?.lastMessageAt);
+              const unread = Number(c?.unreadCount || 0);
+
+              // ✅ defensive key
+              const key = c?.id ? String(c.id) : `fallback-${idx}`;
+
+              return (
+                <TouchableOpacity
+                  key={key}
+                  activeOpacity={0.88}
+                  onPress={() => onOpenChat(c)}
+                  style={styles.row}
+                >
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{inboxInitials(name)}</Text>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.topLine}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {name}
+                      </Text>
+
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                        }}
+                      >
+                        {!!unread && (
+                          <View style={styles.badge}>
+                            <Text style={styles.badgeText}>
+                              {unread > 99 ? "99+" : String(unread)}
+                            </Text>
+                          </View>
+                        )}
+                        {!!time && <Text style={styles.time}>{time}</Text>}
+                      </View>
+                    </View>
+
+                    <Text style={styles.last} numberOfLines={1}>
+                      {last}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  title: { color: "#F9FAFB", fontSize: 16, fontWeight: "800" },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
+  },
+  chipText: { color: "#60A5FA", fontSize: 12, fontWeight: "800" },
+
+  card: {
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#111827",
+    borderRadius: 16,
+    padding: 12,
+  },
+
+  loadingText: { color: "#94A3B8", marginTop: 8, fontWeight: "900" },
+
+  emptyTitle: { color: "#E5E7EB", fontWeight: "900", fontSize: 13 },
+  emptyBody: { color: "#94A3B8", marginTop: 6, fontSize: 12, lineHeight: 18 },
+  cta: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    backgroundColor: "#F97316",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  ctaText: { color: "#0B1120", fontWeight: "900" },
+
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#020617",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    borderRadius: 14,
+    padding: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#F97316", fontWeight: "900", fontSize: 14 },
+
+  topLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  name: { color: "#E5E7EB", fontWeight: "900", maxWidth: 210 },
+  last: { color: "#94A3B8", marginTop: 4, fontSize: 12 },
+
+  time: { color: "#64748B", fontSize: 11, fontWeight: "900" },
+  badge: {
+    backgroundColor: "#F97316",
+    borderWidth: 1,
+    borderColor: "#FB923C",
+    paddingHorizontal: 8,
+    height: 18,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: { color: "#111827", fontWeight: "900", fontSize: 10 },
+});
+</file>
+
+<file path="app/screens/home/components/MiniStatsRow.tsx">
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+
+type Props = {
+  xp: number;
+  points: number;
+  streak: number;
+};
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.item}>
+      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.label}>{label}</Text>
+    </View>
+  );
+}
+
+export default function MiniStatsRow({ xp, points, streak }: Props) {
+  return (
+    <View style={styles.wrap}>
+      <Stat label="XP" value={xp} />
+      <View style={styles.sep} />
+      <Stat label="Points" value={points} />
+      <View style={styles.sep} />
+      <Stat label="Streak" value={streak} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    backgroundColor: "#0B1120",
+    borderWidth: 1,
+    borderColor: "#111827",
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  item: { flex: 1, alignItems: "center" },
+  value: { color: "#F9FAFB", fontSize: 16, fontWeight: "900" },
+  label: { color: "#94A3B8", fontSize: 11, fontWeight: "800", marginTop: 4 },
+  sep: { width: 1, height: 26, backgroundColor: "#111827" },
+});
+</file>
+
+<file path="app/screens/home/components/SectionHeader.tsx">
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+type Props = {
+  icon?: string;
+  title: string;
+  subtitle?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+export default function SectionHeader({
+  icon,
+  title,
+  subtitle,
+  actionLabel,
+  onAction,
+}: Props) {
+  return (
+    <View style={styles.wrap}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.title}>
+          {icon ? `${icon} ` : ""}
+          {title}
+        </Text>
+        {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
+
+      {!!actionLabel && !!onAction && (
+        <TouchableOpacity
+          onPress={onAction}
+          activeOpacity={0.85}
+          style={styles.actionChip}
+        >
+          <Text style={styles.actionText}>{actionLabel}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 8,
+  },
+  title: { color: "#F9FAFB", fontSize: 16, fontWeight: "800" },
+  subtitle: { color: "#64748B", fontSize: 12, marginTop: 4 },
+  actionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
+  },
+  actionText: { color: "#60A5FA", fontSize: 12, fontWeight: "800" },
+});
+</file>
+
+<file path="app/screens/home/components/StickyPrimaryCTA.tsx">
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
+type Props = {
+  visible: boolean;
+  onPress: () => void;
+  label?: string;
+};
+
+export default function StickyPrimaryCTA({
+  visible,
+  onPress,
+  label = "Start: Find a mentor",
+}: Props) {
+  if (!visible) return null;
+
+  return (
+    <View style={styles.wrap} pointerEvents="box-none">
+      <View style={styles.inner}>
+        <TouchableOpacity
+          style={styles.btn}
+          onPress={onPress}
+          activeOpacity={0.9}
+        >
+          <Text style={styles.text}>{label}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  inner: {
+    backgroundColor: "rgba(2, 6, 23, 0.85)",
+    borderRadius: 18,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#111827",
+  },
+  btn: {
+    backgroundColor: "#F97316",
+    borderRadius: 999,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  text: { color: "#0B1120", fontWeight: "900", fontSize: 14 },
+});
+</file>
+
 <file path="app/screens/homescreen.styles.ts">
 // app/screens/homescreen.styles.ts
 import { StyleSheet } from "react-native";
@@ -11206,248 +11170,6 @@ console.log("[sessions] listMySessions returned:", Array.isArray(data) ? data.le
       onRefresh,
     ]
   );
-}
-</file>
-
-<file path="app/sessions/screens/request/(hooks)/useRequestSessionForm.ts">
-// app/sessions/screens/request/(hooks)/useRequestSessionForm.ts
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useMemo, useState } from "react";
-
-import { requestSession, type SessionDTO } from "../../../api/sessionsApi";
-
-
-type Errors = {
-  skill?: string;
-  level?: string;
-  date?: string;
-  time?: string;
-};
-
-type Touched = {
-  topic: boolean;
-  schedule: boolean;
-  note: boolean;
-};
-
-export type RequestSessionFormInit = {
-  mentorId: string;
-  mentorName?: string;
-  prefillSkill?: string;
-  prefillLevel?: string;
-};
-
-function normalizeStr(v: any) {
-  return String(v ?? "").trim();
-}
-
-function isValidTimeHHMM(t: string) {
-  // very safe: accept "HH:MM" 00:00..23:59
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(t);
-}
-
-function isValidDateYYYYMMDD(d: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(d);
-}
-
-function todayYYYYMMDD() {
-  const dt = new Date();
-  const yyyy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function buildISO(dateYYYYMMDD: string, timeHHMM: string) {
-  // local time -> ISO
-  const [y, m, d] = dateYYYYMMDD.split("-").map(Number);
-  const [hh, mm] = timeHHMM.split(":").map(Number);
-  const dt = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
-  return dt.toISOString();
-}
-
-export function useRequestSessionForm(init: RequestSessionFormInit) {
-  const [step, setStep] = useState<number>(1);
-
-  const [skill, setSkill] = useState<string>(normalizeStr(init.prefillSkill));
-  const [level, setLevel] = useState<string>(normalizeStr(init.prefillLevel));
-
-  const [date, setDate] = useState<string>(""); // YYYY-MM-DD
-  const [time, setTime] = useState<string>(""); // HH:MM
-
-  const [note, setNote] = useState<string>("");
-
-  const [touched, setTouched] = useState<Touched>({
-    topic: false,
-    schedule: false,
-    note: false,
-  });
-
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string>("");
-  const [created, setCreated] = useState<SessionDTO | null>(null);
-
-  const errors: Errors = useMemo(() => {
-    const e: Errors = {};
-
-    // Step 1
-    if (!normalizeStr(skill)) e.skill = "Please enter a skill/topic.";
-    if (!normalizeStr(level)) e.level = "Please choose a level.";
-
-    // Step 2
-    if (!normalizeStr(date)) e.date = "Please choose a date.";
-    else if (!isValidDateYYYYMMDD(date)) e.date = "Invalid date format.";
-    if (!normalizeStr(time)) e.time = "Please choose a time.";
-    else if (!isValidTimeHHMM(time)) e.time = "Invalid time format.";
-
-    return e;
-  }, [skill, level, date, time]);
-
-  const canGoNext = useMemo(() => {
-    if (step === 1) return !errors.skill && !errors.level;
-    if (step === 2) return !errors.date && !errors.time;
-    return true; // step 3 always allows submit button (hook submit validates)
-  }, [step, errors]);
-
-  const touchStep = useCallback((s: number) => {
-    setTouched((prev) => {
-      if (s === 1) return { ...prev, topic: true };
-      if (s === 2) return { ...prev, schedule: true };
-      if (s === 3) return { ...prev, note: true };
-      return prev;
-    });
-  }, []);
-
-  const next = useCallback(() => {
-    setStep((p) => Math.min(3, p + 1));
-  }, []);
-
-  const back = useCallback(() => {
-    setStep((p) => Math.max(1, p - 1));
-  }, []);
-
-  const reviewScheduleText = useMemo(() => {
-    const d = normalizeStr(date);
-    const t = normalizeStr(time);
-    if (!d && !t) return "—";
-    if (d && t) return `${d} ${t}`;
-    return d || t;
-  }, [date, time]);
-
-  // StepSchedule "quick pick" can pass either:
-  // - { date: "YYYY-MM-DD", time: "HH:MM" }
-  // - or a string preset (we handle a few common ones safely)
-  const quickPick = useCallback((preset: any) => {
-    // object form
-    if (preset && typeof preset === "object") {
-      const d = normalizeStr(preset.date);
-      const t = normalizeStr(preset.time);
-      if (d) setDate(d);
-      if (t) setTime(t);
-      return;
-    }
-
-    // string presets (safe defaults)
-    const p = normalizeStr(preset);
-    const today = todayYYYYMMDD();
-    if (p === "today") {
-      setDate(today);
-      return;
-    }
-    if (p === "today_18") {
-      setDate(today);
-      setTime("18:00");
-      return;
-    }
-    if (p === "today_19") {
-      setDate(today);
-      setTime("19:00");
-      return;
-    }
-  }, []);
-
-  const submit = useCallback(async () => {
-    setSubmitError("");
-
-    // validate all
-    const s = normalizeStr(skill);
-    const l = normalizeStr(level);
-    const d = normalizeStr(date);
-    const t = normalizeStr(time);
-
-    if (!init.mentorId) {
-      setSubmitError("Missing mentorId.");
-      return { ok: false as const };
-    }
-    if (!s || !l || !d || !t || errors.skill || errors.level || errors.date || errors.time) {
-      setSubmitError("Please fix the missing fields above.");
-      return { ok: false as const };
-    }
-
-    let token = "";
-    try {
-      token = (await AsyncStorage.getItem("token")) || "";
-    } catch {
-      token = "";
-    }
-
-    if (!token) {
-      setSubmitError("You are not logged in. Please login again.");
-      return { ok: false as const };
-    }
-
-    setSubmitting(true);
-    try {
-      const scheduledAt = buildISO(d, t);
-
-      const createdSession = await requestSession(token, {
-        mentorId: init.mentorId,
-        skill: s,
-        level: l,
-        scheduledAt,
-        note: normalizeStr(note),
-      });
-
-      setCreated(createdSession);
-      return { ok: true as const, session: createdSession };
-    } catch (e: any) {
-      setSubmitError(e?.message || "Failed to send request.");
-      return { ok: false as const };
-    } finally {
-      setSubmitting(false);
-    }
-  }, [init.mentorId, skill, level, date, time, note, errors]);
-
-  return {
-    // expected by RequestSessionScreen
-    step,
-    touched,
-    errors,
-    submitting,
-    submitError,
-    created,
-
-    skill,
-    level,
-    date,
-    time,
-    note,
-
-    setSkill,
-    setLevel,
-    setDate,
-    setTime,
-    setNote,
-
-    canGoNext,
-    next,
-    back,
-    touchStep,
-    quickPick,
-    reviewScheduleText,
-
-    submit,
-  };
 }
 </file>
 
@@ -15680,7 +15402,7 @@ const SessionSchema = new mongoose.Schema(
       required: true,
     },
 
-    // what is the session about
+    // skill info
     skill: { type: String, required: true, trim: true },
     level: { type: String, default: "Not specified", trim: true },
 
@@ -15694,6 +15416,20 @@ const SessionSchema = new mongoose.Schema(
       default: "requested",
       index: true,
     },
+
+    // ✅ attendance tracking (additive, safe)
+    joinedAt: { type: Date, default: null },
+    joinedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: [],
+      },
+    ],
+
+    // ✅ timestamps for auditing (additive, safe)
+    completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
 
     // optional notes
     note: { type: String, default: "", trim: true },
@@ -15803,108 +15539,6 @@ module.exports = {
 // server/services/matchingService.js
 const { findMentorMatches } = require("../matching");
 module.exports = { findMentorMatches };
-</file>
-
-<file path="server/services/pointsService.js">
-// server/services/pointsService.js
-const mongoose = require("mongoose");
-const User = require("../models/User");
-const PointTransaction = require("../models/PointTransaction");
-
-async function getBalance(userId) {
-  const user = await User.findById(userId).select("points");
-  if (!user) throw new Error("User not found");
-  return user.points || 0;
-}
-
-async function addPoints(userId, amount, reason, sessionId = null) {
-  if (amount <= 0) throw new Error("Amount must be positive");
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new Error("User not found");
-
-    const current = user.points || 0;
-    const next = current + amount;
-
-    user.points = next;
-    await user.save();
-
-    await PointTransaction.create(
-      [
-        {
-          userId,
-          amount,
-          reason,
-          sessionId,
-          balanceAfter: next,
-        },
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-
-    return next;
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    throw err;
-  }
-}
-
-async function deductPoints(userId, amount, reason, sessionId = null) {
-  if (amount <= 0) throw new Error("Amount must be positive");
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const user = await User.findById(userId).session(session);
-    if (!user) throw new Error("User not found");
-
-    const current = user.points || 0;
-    if (current < amount) {
-      throw new Error("Not enough points");
-    }
-
-    const next = current - amount;
-    user.points = next;
-    await user.save();
-
-    await PointTransaction.create(
-      [
-        {
-          userId,
-          amount: -amount,
-          reason,
-          sessionId,
-          balanceAfter: next,
-        },
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-
-    return next;
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    throw err;
-  }
-}
-
-module.exports = {
-  getBalance,
-  addPoints,
-  deductPoints,
-};
 </file>
 
 <file path="server/services/ratingsService.js">
@@ -16272,6 +15906,42 @@ tsconfig.json
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ]
+}
+</file>
+
+<file path="app/_layout.tsx">
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import "react-native-reanimated";
+
+import { useColorScheme } from "@/hooks/use-color-scheme";
+
+export const unstable_settings = {
+  anchor: "(tabs)",
+};
+
+export default function RootLayout() {
+  const colorScheme = useColorScheme();
+
+  return (
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />{" "}
+        {/* ✅ add this */}
+        <Stack.Screen
+          name="modal"
+          options={{ presentation: "modal", title: "Modal" }}
+        />
+      </Stack>
+      <StatusBar style="auto" />
+    </ThemeProvider>
+  );
 }
 </file>
 
@@ -16964,198 +16634,6 @@ const styles = StyleSheet.create({
 });
 </file>
 
-<file path="app/sessions/api/sessionsApi.ts">
-// app/sessions/api/sessionsApi.ts
-import { API_URL } from "../../../lib/api";
-
-export type SessionStatus =
-  | "requested"
-  | "accepted"
-  | "rejected"
-  | "cancelled" // UI/internal
-  | "completed";
-
-export type SessionDTO = {
-  _id: string;
-  mentorId: string;
-  learnerId: string;
-  skill: string;
-  level: string;
-  scheduledAt: string; // ISO
-  status: SessionStatus;
-  note?: string;
-  rating?: number | null;
-  feedback?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-async function handle(res: Response) {
-  const text = await res.text();
-  let data: any = null;
-
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  if (!res.ok) {
-    const msg =
-      (data && (data.error || data.message)) ||
-      (typeof data === "string" && data) ||
-      `Request failed with status ${res.status}`;
-    throw new Error(msg);
-  }
-
-  return data;
-}
-
-async function fetchWithTimeout(url: string, options: RequestInit, ms = 12000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), ms);
-
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
-  } catch (e: any) {
-    if (e?.name === "AbortError") {
-      throw new Error("Request timed out. Check API_URL / server.");
-    }
-    throw e;
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-// ✅ UI -> API spelling (backend usually uses "canceled")
-function statusForApi(status: SessionStatus) {
-  return status; // ✅ no conversion
-}
-
-function statusFromApi(status: any): SessionStatus {
-  return status as SessionStatus; // ✅ no conversion
-}
-
-
-function normalizeSessionFromApi(s: any): SessionDTO {
-  return {
-    ...s,
-    status: statusFromApi(s?.status),
-  } as SessionDTO;
-}
-
-export async function listMySessions(
-  token: string,
-  params?: {
-    role?: "mentor" | "learner" | "any";
-    scope?: "upcoming" | "past" | "all";
-    statuses?: SessionStatus[];
-  }
-): Promise<SessionDTO[]> {
-  const q = new URLSearchParams();
-  if (params?.role) q.set("role", params.role);
-  if (params?.scope) q.set("scope", params.scope);
-  if (params?.statuses?.length) {
-    q.set("statuses", params.statuses.map(statusForApi).join(","));
-  }
-
-  const url = `${API_URL}/api/sessions/mine${
-    q.toString() ? `?${q.toString()}` : ""
-  }`;
-
-  const res = await fetchWithTimeout(
-    url,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    },
-    12000
-  );
-
-  const data = await handle(res);
-  const arr = Array.isArray(data?.sessions) ? data.sessions : Array.isArray(data) ? data : [];
-  return arr.map(normalizeSessionFromApi);
-}
-
-export async function requestSession(
-  token: string,
-  body: {
-    mentorId: string;
-    skill: string;
-    level?: string;
-    scheduledAt: string;
-    note?: string;
-  }
-): Promise<SessionDTO> {
-  const res = await fetchWithTimeout(
-    `${API_URL}/api/sessions`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    },
-    12000
-  );
-
-  const data = await handle(res);
-  const s = data?.session ?? data;
-  return normalizeSessionFromApi(s);
-}
-
-export async function updateSessionStatus(
-  token: string,
-  sessionId: string,
-  status: SessionStatus
-): Promise<SessionDTO> {
-  // ✅ log صح (جوا الفنكشن) لو بدك
-  // console.log("[sessions] update status", sessionId, "=>", status);
-
-  const res = await fetchWithTimeout(
-    `${API_URL}/api/sessions/${sessionId}/status`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ status: statusForApi(status) }),
-    },
-    12000
-  );
-
-  const data = await handle(res);
-  const s = data?.session ?? data;
-  return normalizeSessionFromApi(s);
-}
-
-export async function rateSession(
-  token: string,
-  sessionId: string,
-  body: { rating: number; feedback?: string }
-): Promise<SessionDTO> {
-  const res = await fetchWithTimeout(
-    `${API_URL}/api/sessions/${sessionId}/rate`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    },
-    12000
-  );
-
-  const data = await handle(res);
-  const s = data?.session ?? data;
-  return normalizeSessionFromApi(s);
-}
-</file>
-
 <file path="app/sessions/index.tsx">
 import SessionsScreen from "./screens/SessionsScreen";
 
@@ -17168,6 +16646,248 @@ import RequestSessionScreen from "./screens/request/RequestSessionScreen";
 
 export default function Request() {
   return <RequestSessionScreen />;
+}
+</file>
+
+<file path="app/sessions/screens/request/(hooks)/useRequestSessionForm.ts">
+// app/sessions/screens/request/(hooks)/useRequestSessionForm.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useMemo, useState } from "react";
+
+import { requestSession, type SessionDTO } from "../../../api/sessionsApi";
+
+
+type Errors = {
+  skill?: string;
+  level?: string;
+  date?: string;
+  time?: string;
+};
+
+type Touched = {
+  topic: boolean;
+  schedule: boolean;
+  note: boolean;
+};
+
+export type RequestSessionFormInit = {
+  mentorId: string;
+  mentorName?: string;
+  prefillSkill?: string;
+  prefillLevel?: string;
+};
+
+function normalizeStr(v: any) {
+  return String(v ?? "").trim();
+}
+
+function isValidTimeHHMM(t: string) {
+  // very safe: accept "HH:MM" 00:00..23:59
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(t);
+}
+
+function isValidDateYYYYMMDD(d: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d);
+}
+
+function todayYYYYMMDD() {
+  const dt = new Date();
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function buildISO(dateYYYYMMDD: string, timeHHMM: string) {
+  // local time -> ISO
+  const [y, m, d] = dateYYYYMMDD.split("-").map(Number);
+  const [hh, mm] = timeHHMM.split(":").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+  return dt.toISOString();
+}
+
+export function useRequestSessionForm(init: RequestSessionFormInit) {
+  const [step, setStep] = useState<number>(1);
+
+  const [skill, setSkill] = useState<string>(normalizeStr(init.prefillSkill));
+  const [level, setLevel] = useState<string>(normalizeStr(init.prefillLevel));
+
+  const [date, setDate] = useState<string>(""); // YYYY-MM-DD
+  const [time, setTime] = useState<string>(""); // HH:MM
+
+  const [note, setNote] = useState<string>("");
+
+  const [touched, setTouched] = useState<Touched>({
+    topic: false,
+    schedule: false,
+    note: false,
+  });
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string>("");
+  const [created, setCreated] = useState<SessionDTO | null>(null);
+
+  const errors: Errors = useMemo(() => {
+    const e: Errors = {};
+
+    // Step 1
+    if (!normalizeStr(skill)) e.skill = "Please enter a skill/topic.";
+    if (!normalizeStr(level)) e.level = "Please choose a level.";
+
+    // Step 2
+    if (!normalizeStr(date)) e.date = "Please choose a date.";
+    else if (!isValidDateYYYYMMDD(date)) e.date = "Invalid date format.";
+    if (!normalizeStr(time)) e.time = "Please choose a time.";
+    else if (!isValidTimeHHMM(time)) e.time = "Invalid time format.";
+
+    return e;
+  }, [skill, level, date, time]);
+
+  const canGoNext = useMemo(() => {
+    if (step === 1) return !errors.skill && !errors.level;
+    if (step === 2) return !errors.date && !errors.time;
+    return true; // step 3 always allows submit button (hook submit validates)
+  }, [step, errors]);
+
+  const touchStep = useCallback((s: number) => {
+    setTouched((prev) => {
+      if (s === 1) return { ...prev, topic: true };
+      if (s === 2) return { ...prev, schedule: true };
+      if (s === 3) return { ...prev, note: true };
+      return prev;
+    });
+  }, []);
+
+  const next = useCallback(() => {
+    setStep((p) => Math.min(3, p + 1));
+  }, []);
+
+  const back = useCallback(() => {
+    setStep((p) => Math.max(1, p - 1));
+  }, []);
+
+  const reviewScheduleText = useMemo(() => {
+    const d = normalizeStr(date);
+    const t = normalizeStr(time);
+    if (!d && !t) return "—";
+    if (d && t) return `${d} ${t}`;
+    return d || t;
+  }, [date, time]);
+
+  // StepSchedule "quick pick" can pass either:
+  // - { date: "YYYY-MM-DD", time: "HH:MM" }
+  // - or a string preset (we handle a few common ones safely)
+  const quickPick = useCallback((preset: any) => {
+    // object form
+    if (preset && typeof preset === "object") {
+      const d = normalizeStr(preset.date);
+      const t = normalizeStr(preset.time);
+      if (d) setDate(d);
+      if (t) setTime(t);
+      return;
+    }
+
+    // string presets (safe defaults)
+    const p = normalizeStr(preset);
+    const today = todayYYYYMMDD();
+    if (p === "today") {
+      setDate(today);
+      return;
+    }
+    if (p === "today_18") {
+      setDate(today);
+      setTime("18:00");
+      return;
+    }
+    if (p === "today_19") {
+      setDate(today);
+      setTime("19:00");
+      return;
+    }
+  }, []);
+
+  const submit = useCallback(async () => {
+    setSubmitError("");
+
+    // validate all
+    const s = normalizeStr(skill);
+    const l = normalizeStr(level);
+    const d = normalizeStr(date);
+    const t = normalizeStr(time);
+
+    if (!init.mentorId) {
+      setSubmitError("Missing mentorId.");
+      return { ok: false as const };
+    }
+    if (!s || !l || !d || !t || errors.skill || errors.level || errors.date || errors.time) {
+      setSubmitError("Please fix the missing fields above.");
+      return { ok: false as const };
+    }
+
+    let token = "";
+    try {
+      token = (await AsyncStorage.getItem("token")) || "";
+    } catch {
+      token = "";
+    }
+
+    if (!token) {
+      setSubmitError("You are not logged in. Please login again.");
+      return { ok: false as const };
+    }
+
+    setSubmitting(true);
+    try {
+      const scheduledAt = buildISO(d, t);
+
+      const createdSession = await requestSession(token, {
+        mentorId: init.mentorId,
+        skill: s,
+        level: l,
+        scheduledAt,
+        note: normalizeStr(note),
+      });
+
+      setCreated(createdSession);
+      return { ok: true as const, session: createdSession };
+    } catch (e: any) {
+      setSubmitError(e?.message || "Failed to send request.");
+      return { ok: false as const };
+    } finally {
+      setSubmitting(false);
+    }
+  }, [init.mentorId, skill, level, date, time, note, errors]);
+
+  return {
+    // expected by RequestSessionScreen
+    step,
+    touched,
+    errors,
+    submitting,
+    submitError,
+    created,
+
+    skill,
+    level,
+    date,
+    time,
+    note,
+
+    setSkill,
+    setLevel,
+    setDate,
+    setTime,
+    setNote,
+
+    canGoNext,
+    next,
+    back,
+    touchStep,
+    quickPick,
+    reviewScheduleText,
+
+    submit,
+  };
 }
 </file>
 
@@ -19461,569 +19181,168 @@ module.exports = function usersRouter(authMiddleware) {
 };
 </file>
 
-<file path="server/routes/sessions.js">
-// server/routes/sessions.js
-const express = require("express");
+<file path="server/services/pointsService.js">
+// server/services/pointsService.js
 const mongoose = require("mongoose");
-const Session = require("../models/Session");
+const User = require("../models/User");
+const PointTransaction = require("../models/PointTransaction");
 
-// ✅ points + rules
-const {
+async function getBalance(userId) {
+  const user = await User.findById(userId).select("points");
+  if (!user) throw new Error("User not found");
+  return user.points || 0;
+}
+
+async function findExistingTx({ userId, reason, sessionId, mongoSession }) {
+  // Idempotency only makes sense when reason+sessionId are provided
+  if (!sessionId || !reason) return null;
+
+  return PointTransaction.findOne({
+    userId,
+    reason,
+    sessionId,
+  })
+    .select("balanceAfter")
+    .session(mongoSession || null);
+}
+
+async function addPoints(userId, amount, reason, sessionId = null, opts = {}) {
+  if (amount <= 0) throw new Error("Amount must be positive");
+
+  const mongoSession = opts.mongoSession || (await mongoose.startSession());
+  const ownsSession = !opts.mongoSession;
+
+  if (ownsSession) mongoSession.startTransaction();
+
+  try {
+    // ✅ Idempotency: if already applied, return stored balanceAfter
+    const existing = await findExistingTx({
+      userId,
+      reason,
+      sessionId,
+      mongoSession,
+    });
+    if (existing) {
+      if (ownsSession) {
+        await mongoSession.commitTransaction();
+        mongoSession.endSession();
+      }
+      return existing.balanceAfter;
+    }
+
+    const user = await User.findById(userId).session(mongoSession);
+    if (!user) throw new Error("User not found");
+
+    const current = user.points || 0;
+    const next = current + amount;
+
+    user.points = next;
+    await user.save({ session: mongoSession });
+
+    await PointTransaction.create(
+      [
+        {
+          userId,
+          amount: +amount,
+          reason,
+          sessionId: sessionId || null,
+          balanceAfter: next,
+        },
+      ],
+      { session: mongoSession }
+    );
+
+    if (ownsSession) {
+      await mongoSession.commitTransaction();
+      mongoSession.endSession();
+    }
+
+    return next;
+  } catch (err) {
+    if (ownsSession) {
+      await mongoSession.abortTransaction();
+      mongoSession.endSession();
+    }
+    throw err;
+  }
+}
+
+async function deductPoints(
+  userId,
+  amount,
+  reason,
+  sessionId = null,
+  opts = {}
+) {
+  if (amount <= 0) throw new Error("Amount must be positive");
+
+  const mongoSession = opts.mongoSession || (await mongoose.startSession());
+  const ownsSession = !opts.mongoSession;
+
+  if (ownsSession) mongoSession.startTransaction();
+
+  try {
+    // ✅ Idempotency: if already applied, return stored balanceAfter
+    const existing = await findExistingTx({
+      userId,
+      reason,
+      sessionId,
+      mongoSession,
+    });
+    if (existing) {
+      if (ownsSession) {
+        await mongoSession.commitTransaction();
+        mongoSession.endSession();
+      }
+      return existing.balanceAfter;
+    }
+
+    const user = await User.findById(userId).session(mongoSession);
+    if (!user) throw new Error("User not found");
+
+    const current = user.points || 0;
+    if (current < amount) {
+      throw new Error("Not enough points");
+    }
+
+    const next = current - amount;
+
+    user.points = next;
+    await user.save({ session: mongoSession });
+
+    await PointTransaction.create(
+      [
+        {
+          userId,
+          amount: -amount,
+          reason,
+          sessionId: sessionId || null,
+          balanceAfter: next,
+        },
+      ],
+      { session: mongoSession }
+    );
+
+    if (ownsSession) {
+      await mongoSession.commitTransaction();
+      mongoSession.endSession();
+    }
+
+    return next;
+  } catch (err) {
+    if (ownsSession) {
+      await mongoSession.abortTransaction();
+      mongoSession.endSession();
+    }
+    throw err;
+  }
+}
+
+module.exports = {
   getBalance,
   addPoints,
   deductPoints,
-} = require("../services/pointsService");
-const { POINTS, CANCEL, REASONS } = require("../services/gamificationRules");
-
-function isValidObjectId(id) {
-  return mongoose.Types.ObjectId.isValid(String(id));
-}
-
-function pickUser(u) {
-  if (!u) return null;
-  return {
-    _id: u._id,
-    fullName: u.fullName,
-    email: u.email,
-    points: u.points,
-    xp: u.xp,
-    streak: u.streak,
-    avgRating: u.avgRating,
-    ratingCount: u.ratingCount,
-  };
-}
-
-async function populateSession(id) {
-  const populated = await Session.findById(id)
-    .populate(
-      "mentorId",
-      "fullName email points xp streak avgRating ratingCount"
-    )
-    .populate(
-      "learnerId",
-      "fullName email points xp streak avgRating ratingCount"
-    );
-
-  if (!populated) return null;
-
-  return {
-    ...populated.toObject(),
-    mentor: pickUser(populated.mentorId),
-    learner: pickUser(populated.learnerId),
-  };
-}
-
-// Normalize API spelling to DB spelling
-function normalizeStatus(raw) {
-  const s = String(raw || "")
-    .trim()
-    .toLowerCase();
-  if (s === "canceled") return "cancelled"; // accept US spelling
-  return s;
-}
-
-function canTransition(current, next) {
-  // conservative rules
-  if (next === "accepted" || next === "rejected")
-    return current === "requested";
-  if (next === "completed") return current === "accepted";
-  if (next === "cancelled") return current !== "completed";
-  return false;
-}
-
-function toMs(v) {
-  const d = new Date(v);
-  const t = d.getTime();
-  if (Number.isNaN(t)) return null;
-  return t;
-}
-
-function isTimeReached(when) {
-  const t = toMs(when);
-  if (!t) return false;
-  return t <= Date.now();
-}
-
-function minutesUntil(when) {
-  const t = toMs(when);
-  if (!t) return null;
-  const diff = t - Date.now();
-  return Math.floor(diff / 60000);
-}
-
-function isLateCancel(scheduledAt) {
-  const mins = minutesUntil(scheduledAt);
-  if (mins === null) return false;
-  // late cancel = scheduled in the future AND within window
-  return mins >= 0 && mins <= Number(CANCEL?.LATE_WINDOW_MINUTES ?? 120);
-}
-
-module.exports = function sessionsRouter(authMiddleware) {
-  const router = express.Router();
-
-  // ============================================================
-  // INTERNAL: safe status updater used by all endpoints
-  // - includes points economy side-effects (accept/complete/cancel-late)
-  // ============================================================
-  async function updateStatusInternal(req, res, nextStatusRaw) {
-    const userId = String(req.userId);
-    const id = String(req.params.id);
-    const nextStatus = normalizeStatus(nextStatusRaw);
-
-    const allowed = new Set(["accepted", "rejected", "cancelled", "completed"]);
-    if (!allowed.has(nextStatus)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-    if (!isValidObjectId(id)) {
-      return res.status(400).json({ error: "Invalid session id" });
-    }
-
-    let s;
-    try {
-      s = await Session.findById(id);
-    } catch (err) {
-      console.error("FIND SESSION ERROR:", err);
-      return res.status(500).json({ error: "Failed to load session" });
-    }
-    if (!s) return res.status(404).json({ error: "Session not found" });
-
-    const isMentor = String(s.mentorId) === userId;
-    const isLearner = String(s.learnerId) === userId;
-    if (!isMentor && !isLearner) {
-      return res.status(403).json({ error: "Not allowed" });
-    }
-
-    const currentStatus = normalizeStatus(s.status);
-
-    // Idempotent: if same status, return populated session (no points side-effects)
-    if (currentStatus === nextStatus) {
-      const session = await populateSession(id);
-      return res.json({ session, ok: true, unchanged: true });
-    }
-
-    // Role rules
-    if (nextStatus === "accepted" || nextStatus === "rejected") {
-      if (!isMentor) return res.status(403).json({ error: "Mentor only" });
-    }
-
-    // Complete: mentor only + after time reached
-    if (nextStatus === "completed") {
-      if (!isMentor) return res.status(403).json({ error: "Mentor only" });
-      if (!isTimeReached(s.scheduledAt)) {
-        return res.status(400).json({
-          error: "You can complete only after the scheduled time is reached",
-        });
-      }
-    }
-
-    // Transition rules
-    if (!canTransition(currentStatus, nextStatus)) {
-      if (nextStatus === "accepted" || nextStatus === "rejected") {
-        return res
-          .status(400)
-          .json({ error: "Can only accept/reject requested sessions" });
-      }
-      if (nextStatus === "completed") {
-        return res
-          .status(400)
-          .json({ error: "Only accepted sessions can be completed" });
-      }
-      if (nextStatus === "cancelled") {
-        return res
-          .status(400)
-          .json({ error: "Cannot cancel completed session" });
-      }
-      return res.status(400).json({ error: "Invalid status transition" });
-    }
-
-    // ============================================================
-    // ✅ POINTS SIDE-EFFECTS (safe + minimal risk)
-    //
-    // Rules:
-    // - On ACCEPT (mentor accepts): learner pays BOOK_LEARN_SESSION_COST
-    // - On COMPLETE: mentor gets TEACH_SESSION_REWARD
-    // - On CANCEL (late): canceller pays CANCEL_LATE_PENALTY (optional rule)
-    //
-    // Important:
-    // - We try to avoid mismatch by:
-    //   - pre-checking balance for learner before accept
-    //   - reverting status if points action fails unexpectedly
-    // ============================================================
-
-    // 1) Pre-check for ACCEPT: learner must have enough points
-    if (currentStatus === "requested" && nextStatus === "accepted") {
-      try {
-        const learnerId = String(s.learnerId);
-        const cost = Number(POINTS?.BOOK_LEARN_SESSION_COST ?? 10);
-
-        const bal = await getBalance(learnerId);
-        if (bal < cost) {
-          return res.status(400).json({
-            error: "Not enough points to book this session",
-            needed: cost,
-            balance: bal,
-          });
-        }
-      } catch (err) {
-        console.error("ACCEPT PRECHECK ERROR:", err);
-        return res.status(500).json({ error: "Failed to validate points" });
-      }
-    }
-
-    // 2) Apply status update first (but revert if points later fails)
-    const prevStatus = currentStatus;
-    try {
-      s.status = nextStatus;
-      await s.save();
-    } catch (err) {
-      console.error("SAVE STATUS ERROR:", err);
-      return res.status(500).json({ error: "Failed to update session status" });
-    }
-
-    // 3) Apply points side-effects
-    try {
-      // ACCEPT: deduct from learner
-      if (prevStatus === "requested" && nextStatus === "accepted") {
-        const learnerId = String(s.learnerId);
-        const cost = Number(POINTS?.BOOK_LEARN_SESSION_COST ?? 10);
-
-        await deductPoints(
-          learnerId,
-          cost,
-          REASONS?.LEARN_SESSION_BOOKED || "learn_session_booked",
-          s._id
-        );
-      }
-
-      // COMPLETE: reward mentor
-      if (prevStatus === "accepted" && nextStatus === "completed") {
-        const mentorId = String(s.mentorId);
-        const reward = Number(POINTS?.TEACH_SESSION_REWARD ?? 10);
-
-        await addPoints(
-          mentorId,
-          reward,
-          REASONS?.TEACH_SESSION_COMPLETED || "teach_session_completed",
-          s._id
-        );
-      }
-
-      // CANCELLED: late cancel penalty on who cancelled
-      if (nextStatus === "cancelled") {
-        // penalty only if it was accepted/requested (not completed) and late
-        const wasActive =
-          prevStatus === "accepted" || prevStatus === "requested";
-        if (wasActive && isLateCancel(s.scheduledAt)) {
-          const penalty = Number(POINTS?.CANCEL_LATE_PENALTY ?? 2);
-
-          // charge the canceller (current user)
-          await deductPoints(
-            userId,
-            penalty,
-            REASONS?.CANCEL_LATE || "cancel_late",
-            s._id
-          );
-        }
-      }
-    } catch (err) {
-      // If points action fails, revert status to previous
-      // (best-effort to keep system consistent)
-      console.error("POINTS SIDE-EFFECT ERROR:", err);
-
-      try {
-        const fresh = await Session.findById(id);
-        if (fresh && normalizeStatus(fresh.status) === nextStatus) {
-          fresh.status = prevStatus;
-          await fresh.save();
-        }
-      } catch (revertErr) {
-        console.error("STATUS REVERT ERROR:", revertErr);
-      }
-
-      return res.status(400).json({
-        error: err?.message || "Points rule failed",
-      });
-    }
-
-    // return populated session
-    const session = await populateSession(id);
-    return res.json({ session, ok: true });
-  }
-
-  // ===============================
-  // CREATE SESSION (learner requests)
-  // POST /api/sessions
-  // body: { mentorId, skill, level?, scheduledAt, note? }
-  // ===============================
-  router.post("/", authMiddleware, async (req, res) => {
-    try {
-      const learnerId = String(req.userId);
-      const { mentorId, skill, level, scheduledAt, note } = req.body || {};
-
-      if (!mentorId || !skill || !scheduledAt) {
-        return res.status(400).json({
-          error: "mentorId, skill, scheduledAt are required",
-        });
-      }
-
-      if (!isValidObjectId(mentorId) || !isValidObjectId(learnerId)) {
-        return res.status(400).json({ error: "Invalid user id" });
-      }
-
-      const when = new Date(scheduledAt);
-      if (Number.isNaN(when.getTime())) {
-        return res.status(400).json({ error: "Invalid scheduledAt date" });
-      }
-
-      const doc = await Session.create({
-        mentorId,
-        learnerId,
-        skill: String(skill).trim(),
-        level: String(level || "Not specified").trim(),
-        scheduledAt: when,
-        note: String(note || "").trim(),
-        status: "requested",
-      });
-
-      const session = await populateSession(doc._id);
-      return res.json({ session });
-    } catch (err) {
-      console.error("CREATE SESSION ERROR:", err);
-      return res.status(500).json({ error: "Failed to create session" });
-    }
-  });
-
-  // ===============================
-  // LIST MY SESSIONS
-  // GET /api/sessions/mine?role=any|mentor|learner&scope=upcoming|past|all&statuses=requested,accepted
-  // ===============================
-  router.get("/mine", authMiddleware, async (req, res) => {
-    try {
-      const userId = String(req.userId);
-
-      const roleRaw = String(req.query.role || "any").trim();
-      const role = roleRaw === "all" ? "any" : roleRaw;
-
-      const scope = String(req.query.scope || "all").trim();
-      const statusesCsv = String(
-        req.query.statuses || req.query.status || ""
-      ).trim();
-
-      const now = new Date();
-      const q = {};
-
-      if (role === "mentor") q.mentorId = userId;
-      else if (role === "learner") q.learnerId = userId;
-      else q.$or = [{ mentorId: userId }, { learnerId: userId }];
-
-      if (scope === "upcoming") q.scheduledAt = { $gte: now };
-      else if (scope === "past") q.scheduledAt = { $lt: now };
-
-      if (statusesCsv) {
-        const statuses = statusesCsv
-          .split(",")
-          .map((st) => normalizeStatus(st))
-          .map((st) => st.trim())
-          .filter(Boolean);
-
-        if (statuses.length) q.status = { $in: statuses };
-      }
-
-      const list = await Session.find(q)
-        .sort({ scheduledAt: 1 })
-        .populate(
-          "mentorId",
-          "fullName email points xp streak avgRating ratingCount"
-        )
-        .populate(
-          "learnerId",
-          "fullName email points xp streak avgRating ratingCount"
-        );
-
-      const out = list.map((x) => ({
-        ...x.toObject(),
-        mentor: pickUser(x.mentorId),
-        learner: pickUser(x.learnerId),
-      }));
-
-      return res.json({ sessions: out });
-    } catch (err) {
-      console.error("LIST SESSIONS ERROR:", err);
-      return res.status(500).json({ error: "Failed to list sessions" });
-    }
-  });
-
-  // ============================================================
-  // PATCH /api/sessions/:id/status { status }
-  // ============================================================
-  router.patch("/:id/status", authMiddleware, async (req, res) => {
-    return updateStatusInternal(req, res, req.body?.status);
-  });
-
-  // ============================================================
-  // SAFE ENDPOINTS (additive)
-  // ============================================================
-  router.post("/:id/accept", authMiddleware, async (req, res) => {
-    return updateStatusInternal(req, res, "accepted");
-  });
-
-  router.post("/:id/reject", authMiddleware, async (req, res) => {
-    return updateStatusInternal(req, res, "rejected");
-  });
-
-  router.post("/:id/cancel", authMiddleware, async (req, res) => {
-    return updateStatusInternal(req, res, "cancelled");
-  });
-
-  router.post("/:id/complete", authMiddleware, async (req, res) => {
-    return updateStatusInternal(req, res, "completed");
-  });
-
-  // ===============================
-  // RATE SESSION
-  // POST /api/sessions/:id/rate  { rating, feedback }
-  // ===============================
-  router.post("/:id/rate", authMiddleware, async (req, res) => {
-    try {
-      const userId = String(req.userId);
-      const id = String(req.params.id);
-      const rating = Number(req.body?.rating);
-      const feedback = String(req.body?.feedback || "").trim();
-
-      if (!isValidObjectId(id))
-        return res.status(400).json({ error: "Invalid session id" });
-
-      if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
-        return res
-          .status(400)
-          .json({ error: "rating must be between 1 and 5" });
-      }
-
-      const s = await Session.findById(id);
-      if (!s) return res.status(404).json({ error: "Session not found" });
-
-      const isMentor = String(s.mentorId) === userId;
-      const isLearner = String(s.learnerId) === userId;
-      if (!isMentor && !isLearner)
-        return res.status(403).json({ error: "Not allowed" });
-
-      if (normalizeStatus(s.status) !== "completed") {
-        return res
-          .status(400)
-          .json({ error: "You can rate only completed sessions" });
-      }
-
-      if (s.rating) {
-        return res.status(400).json({ error: "Session already rated" });
-      }
-
-      s.rating = Math.round(rating);
-      s.feedback = feedback;
-      await s.save();
-
-      const session = await populateSession(id);
-      return res.json({ ok: true, session });
-    } catch (err) {
-      console.error("RATE SESSION ERROR:", err);
-      return res.status(500).json({ error: "Failed to rate session" });
-    }
-  });
-
-  return router;
 };
-</file>
-
-<file path="app/(tabs)/_layout.tsx">
-// app/(tabs)/_layout.tsx
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Tabs, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
-
-export default function TabLayout() {
-  const router = useRouter();
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        const token = await AsyncStorage.getItem("token");
-        if (!mounted) return;
-
-        if (!token) {
-          router.replace("/(auth)/login" as any);
-          return;
-        }
-      } finally {
-        if (mounted) setChecking(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [router]);
-
-  if (checking) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "#020617",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ActivityIndicator />
-        <Text style={{ color: "#94A3B8", marginTop: 10 }}>Loading...</Text>
-      </View>
-    );
-  }
-
-  return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#020617",
-          borderTopColor: "#0B1120",
-        },
-        tabBarActiveTintColor: "#F97316",
-        tabBarInactiveTintColor: "#94A3B8",
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>🏠</Text>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: "Explore",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>🧭</Text>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{
-          title: "Chats",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>💬</Text>
-          ),
-        }}
-      />
-    </Tabs>
-  );
-}
 </file>
 
 <file path="app/find-mentor.tsx">
@@ -20985,6 +20304,873 @@ const styles = StyleSheet.create({
 export { default } from "./(auth)/login";
 </file>
 
+<file path="app/sessions/api/sessionsApi.ts">
+// app/sessions/api/sessionsApi.ts
+import { API_URL } from "../../../lib/api";
+
+export type SessionStatus =
+  | "requested"
+  | "accepted"
+  | "rejected"
+  | "cancelled" // UI/internal
+  | "completed";
+
+export type SessionDTO = {
+  _id: string;
+  mentorId: string;
+  learnerId: string;
+  skill: string;
+  level: string;
+  scheduledAt: string; // ISO
+  status: SessionStatus;
+  note?: string;
+  rating?: number | null;
+  feedback?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+async function handle(res: Response) {
+  const text = await res.text();
+  let data: any = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!res.ok) {
+    const msg =
+      (data && (data.error || data.message)) ||
+      (typeof data === "string" && data) ||
+      `Request failed with status ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return data;
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, ms = 12000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), ms);
+
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } catch (e: any) {
+    if (e?.name === "AbortError") {
+      throw new Error("Request timed out. Check API_URL / server.");
+    }
+    throw e;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+// ✅ UI -> API spelling (backend usually uses "canceled")
+function statusForApi(status: SessionStatus) {
+  return status; // ✅ no conversion
+}
+
+function statusFromApi(status: any): SessionStatus {
+  return status as SessionStatus; // ✅ no conversion
+}
+
+
+function normalizeSessionFromApi(s: any): SessionDTO {
+  return {
+    ...s,
+    status: statusFromApi(s?.status),
+  } as SessionDTO;
+}
+
+export async function listMySessions(
+  token: string,
+  params?: {
+    role?: "mentor" | "learner" | "any";
+    scope?: "upcoming" | "past" | "all";
+    statuses?: SessionStatus[];
+  }
+): Promise<SessionDTO[]> {
+  const q = new URLSearchParams();
+  if (params?.role) q.set("role", params.role);
+  if (params?.scope) q.set("scope", params.scope);
+  if (params?.statuses?.length) {
+    q.set("statuses", params.statuses.map(statusForApi).join(","));
+  }
+
+  const url = `${API_URL}/api/sessions/mine${
+    q.toString() ? `?${q.toString()}` : ""
+  }`;
+
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    12000
+  );
+
+  const data = await handle(res);
+  const arr = Array.isArray(data?.sessions) ? data.sessions : Array.isArray(data) ? data : [];
+  return arr.map(normalizeSessionFromApi);
+}
+
+export async function requestSession(
+  token: string,
+  body: {
+    mentorId: string;
+    skill: string;
+    level?: string;
+    scheduledAt: string;
+    note?: string;
+  }
+): Promise<SessionDTO> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/sessions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    },
+    12000
+  );
+
+  const data = await handle(res);
+  const s = data?.session ?? data;
+  return normalizeSessionFromApi(s);
+}
+
+export async function updateSessionStatus(
+  token: string,
+  sessionId: string,
+  status: SessionStatus
+): Promise<SessionDTO> {
+  // ✅ log صح (جوا الفنكشن) لو بدك
+  // console.log("[sessions] update status", sessionId, "=>", status);
+
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/sessions/${sessionId}/status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status: statusForApi(status) }),
+    },
+    12000
+  );
+
+  const data = await handle(res);
+  const s = data?.session ?? data;
+  return normalizeSessionFromApi(s);
+}
+
+export async function rateSession(
+  token: string,
+  sessionId: string,
+  body: { rating: number; feedback?: string }
+): Promise<SessionDTO> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/api/sessions/${sessionId}/rate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    },
+    12000
+  );
+
+  const data = await handle(res);
+  const s = data?.session ?? data;
+  return normalizeSessionFromApi(s);
+}
+</file>
+
+<file path="app/signup.tsx">
+
+</file>
+
+<file path="server/package.json">
+{
+  "name": "skillswap-backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.0.1",
+    "openai": "^6.10.0",
+    "socket.io": "^4.8.3"
+  }
+}
+</file>
+
+<file path="server/routes/sessions.js">
+// server/routes/sessions.js
+const express = require("express");
+const mongoose = require("mongoose");
+const Session = require("../models/Session");
+
+// ✅ points + rules
+const {
+  getBalance,
+  addPoints,
+  deductPoints,
+} = require("../services/pointsService");
+const { POINTS, CANCEL, REASONS } = require("../services/gamificationRules");
+
+// ✅ ratings service (fix rating reflection)
+const { rateSession } = require("../services/ratingsService");
+
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(String(id));
+}
+
+function normalizeStatus(raw) {
+  const s = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (s === "canceled") return "cancelled"; // accept US spelling
+  return s;
+}
+
+function canTransition(current, next) {
+  // conservative rules
+  if (next === "accepted" || next === "rejected")
+    return current === "requested";
+  if (next === "completed") return current === "accepted";
+  if (next === "cancelled") return current !== "completed";
+  return false;
+}
+
+function toMs(v) {
+  const d = new Date(v);
+  const t = d.getTime();
+  if (Number.isNaN(t)) return null;
+  return t;
+}
+
+function isTimeReached(when) {
+  const t = toMs(when);
+  if (!t) return false;
+  return t <= Date.now();
+}
+
+function minutesUntil(when) {
+  const t = toMs(when);
+  if (!t) return null;
+  const diff = t - Date.now();
+  return Math.floor(diff / 60000);
+}
+
+function minutesSince(when) {
+  const t = toMs(when);
+  if (!t) return null;
+  const diff = Date.now() - t;
+  return Math.floor(diff / 60000);
+}
+
+function isLateCancel(scheduledAt) {
+  const mins = minutesUntil(scheduledAt);
+  if (mins === null) return false;
+  // late cancel = scheduled in the future AND within window
+  return mins >= 0 && mins <= Number(CANCEL?.LATE_WINDOW_MINUTES ?? 120);
+}
+
+// ✅ Time Rules (centralized)
+const RULES = {
+  // Accept/Reject should not happen once time reached
+  ACCEPT_REJECT_BLOCK_AT_START: true,
+
+  // Join window
+  JOIN_EARLY_MIN: 30, // can join 30 min before
+  JOIN_LATE_MIN: 180, // can join up to 3 hours after
+
+  // Complete window
+  COMPLETE_MAX_DELAY_MIN: 24 * 60, // 24 hours after scheduledAt
+};
+
+function canJoinNow(sessionDoc) {
+  const until = minutesUntil(sessionDoc.scheduledAt);
+  if (until === null) return { ok: false, reason: "Invalid scheduledAt" };
+
+  // until > 0 means future
+  // allow join if (future and within early window) OR (past but within late window)
+  if (until > 0 && until <= RULES.JOIN_EARLY_MIN) return { ok: true };
+  if (until <= 0) {
+    const since = minutesSince(sessionDoc.scheduledAt);
+    if (since !== null && since <= RULES.JOIN_LATE_MIN) return { ok: true };
+  }
+  return { ok: false, reason: "Join window is closed" };
+}
+
+function canCompleteNow(sessionDoc) {
+  if (!isTimeReached(sessionDoc.scheduledAt)) {
+    return { ok: false, reason: "Too early to complete" };
+  }
+  const since = minutesSince(sessionDoc.scheduledAt);
+  if (since === null) return { ok: false, reason: "Invalid scheduledAt" };
+  if (since > RULES.COMPLETE_MAX_DELAY_MIN) {
+    return { ok: false, reason: "Completion window expired" };
+  }
+  return { ok: true };
+}
+
+function pickUser(u) {
+  if (!u) return null;
+  return {
+    id: String(u._id),
+    fullName: String(u.fullName || ""),
+    email: String(u.email || ""),
+    points: Number(u.points || 0),
+    xp: Number(u.xp || 0),
+    streak: Number(u.streak || 0),
+    avgRating: Number(u.avgRating || 0),
+    ratingCount: Number(u.ratingCount || 0),
+  };
+}
+
+async function populateSession(id) {
+  const s = await Session.findById(id)
+    .populate(
+      "mentorId",
+      "fullName email points xp streak avgRating ratingCount"
+    )
+    .populate(
+      "learnerId",
+      "fullName email points xp streak avgRating ratingCount"
+    );
+
+  if (!s) return null;
+
+  const o = s.toObject();
+  return {
+    ...o,
+    mentor: pickUser(o.mentorId),
+    learner: pickUser(o.learnerId),
+  };
+}
+
+module.exports = function sessionsRouter(authMiddleware) {
+  const router = express.Router();
+
+  // ============================================================
+  // INTERNAL: safe status updater used by all endpoints
+  // - includes points economy side-effects (accept/complete/cancel-late)
+  // ============================================================
+  async function updateStatusInternal(req, res, statusRaw) {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      const nextStatus = normalizeStatus(statusRaw);
+
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      if (!nextStatus) return res.status(400).json({ error: "Missing status" });
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+
+      const isMentor = mentorId === userId;
+      const isLearner = learnerId === userId;
+
+      if (!isMentor && !isLearner) {
+        return res.status(403).json({ error: "Not allowed" });
+      }
+
+      const currentStatus = String(s.status);
+
+      // Idempotent: if same status, return populated session (no points side-effects)
+      if (currentStatus === nextStatus) {
+        const session = await populateSession(id);
+        return res.json({ session, ok: true, unchanged: true });
+      }
+
+      // Role rules
+      if (nextStatus === "accepted" || nextStatus === "rejected") {
+        if (!isMentor) return res.status(403).json({ error: "Mentor only" });
+
+        // ✅ Level-0 fix: block accept/reject after time reached
+        if (
+          RULES.ACCEPT_REJECT_BLOCK_AT_START &&
+          isTimeReached(s.scheduledAt)
+        ) {
+          return res.status(400).json({
+            error: "You cannot accept/reject after the session time is reached",
+          });
+        }
+      }
+
+      // Complete: mentor only + after time reached + within window + join required
+      if (nextStatus === "completed") {
+        if (!isMentor) return res.status(403).json({ error: "Mentor only" });
+
+        const okTime = canCompleteNow(s);
+        if (!okTime.ok) {
+          return res.status(400).json({
+            error: `Cannot complete: ${okTime.reason}`,
+          });
+        }
+
+        // ✅ Level-0 fix: require mentor joined (attendance)
+        const joinedBy = Array.isArray(s.joinedBy)
+          ? s.joinedBy.map(String)
+          : [];
+        if (!s.joinedAt || !joinedBy.includes(mentorId)) {
+          return res.status(400).json({
+            error:
+              "Cannot complete: mentor must join the session before completing",
+          });
+        }
+      }
+
+      // Transition rules
+      if (!canTransition(currentStatus, nextStatus)) {
+        if (nextStatus === "accepted" || nextStatus === "rejected") {
+          return res
+            .status(400)
+            .json({ error: "Can only accept/reject requested sessions" });
+        }
+        if (nextStatus === "completed") {
+          return res
+            .status(400)
+            .json({ error: "Can only complete accepted sessions" });
+        }
+        if (nextStatus === "cancelled") {
+          return res
+            .status(400)
+            .json({ error: "Invalid cancellation transition" });
+        }
+        return res.status(400).json({ error: "Invalid status transition" });
+      }
+
+      // Accept precheck: learner must have points
+      if (currentStatus === "requested" && nextStatus === "accepted") {
+        try {
+          const cost = Number(POINTS?.BOOK_LEARN_SESSION_COST ?? 10);
+          const bal = await getBalance(learnerId);
+          if (bal < cost) {
+            return res.status(400).json({
+              error: "Not enough points to book this session",
+              needed: cost,
+              balance: bal,
+            });
+          }
+        } catch (err) {
+          console.error("ACCEPT PRECHECK ERROR:", err);
+          return res.status(500).json({ error: "Failed to validate points" });
+        }
+      }
+
+      // Apply status update first (but revert if points fail)
+      const prevStatus = currentStatus;
+      try {
+        s.status = nextStatus;
+
+        // timestamps (best-effort, additive)
+        if (nextStatus === "completed") s.completedAt = new Date();
+        if (nextStatus === "cancelled") s.cancelledAt = new Date();
+
+        await s.save();
+      } catch (err) {
+        console.error("SAVE STATUS ERROR:", err);
+        return res
+          .status(500)
+          .json({ error: "Failed to update session status" });
+      }
+
+      // Apply points side-effects (idempotent now)
+      try {
+        // ACCEPT: deduct from learner
+        if (prevStatus === "requested" && nextStatus === "accepted") {
+          const cost = Number(POINTS?.BOOK_LEARN_SESSION_COST ?? 10);
+
+          await deductPoints(
+            learnerId,
+            cost,
+            REASONS?.LEARN_SESSION_BOOKED || "learn_session_booked",
+            s._id
+          );
+        }
+
+        // COMPLETE: reward mentor
+        if (prevStatus === "accepted" && nextStatus === "completed") {
+          const reward = Number(POINTS?.TEACH_SESSION_REWARD ?? 10);
+
+          await addPoints(
+            mentorId,
+            reward,
+            REASONS?.TEACH_SESSION_COMPLETED || "teach_session_completed",
+            s._id
+          );
+        }
+
+        // CANCELLED: late cancel penalty on who cancelled
+        if (nextStatus === "cancelled") {
+          const wasActive =
+            prevStatus === "accepted" || prevStatus === "requested";
+          if (wasActive && isLateCancel(s.scheduledAt)) {
+            const penalty = Number(POINTS?.CANCEL_LATE_PENALTY ?? 2);
+
+            await deductPoints(
+              userId,
+              penalty,
+              REASONS?.CANCEL_LATE || "cancel_late",
+              s._id
+            );
+          }
+        }
+      } catch (err) {
+        console.error("POINTS SIDE-EFFECT ERROR:", err);
+
+        // revert status if points failed
+        try {
+          const fresh = await Session.findById(id);
+          if (fresh) {
+            fresh.status = prevStatus;
+            await fresh.save();
+          }
+        } catch (revertErr) {
+          console.error("STATUS REVERT ERROR:", revertErr);
+        }
+
+        return res.status(400).json({
+          error: err?.message || "Points rule failed",
+        });
+      }
+
+      // return populated session
+      const session = await populateSession(id);
+      return res.json({ session, ok: true });
+    } catch (err) {
+      console.error("UPDATE STATUS ERROR:", err);
+      return res.status(500).json({ error: "Failed to update session status" });
+    }
+  }
+
+  // ===============================
+  // CREATE SESSION (learner requests)
+  // POST /api/sessions
+  // body: { mentorId, skill, level?, scheduledAt, note? }
+  // ===============================
+  router.post("/", authMiddleware, async (req, res) => {
+    try {
+      const learnerId = String(req.userId);
+      const { mentorId, skill, level, scheduledAt, note } = req.body || {};
+
+      if (!mentorId || !skill || !scheduledAt) {
+        return res.status(400).json({
+          error: "mentorId, skill, scheduledAt are required",
+        });
+      }
+
+      if (!isValidObjectId(mentorId)) {
+        return res.status(400).json({ error: "Invalid mentorId" });
+      }
+
+      const when = new Date(scheduledAt);
+      if (Number.isNaN(when.getTime())) {
+        return res.status(400).json({ error: "Invalid scheduledAt" });
+      }
+
+      const s = await Session.create({
+        mentorId,
+        learnerId,
+        skill: String(skill).trim(),
+        level: String(level || "Not specified").trim(),
+        scheduledAt: when,
+        note: String(note || "").trim(),
+        status: "requested",
+      });
+
+      const session = await populateSession(s._id);
+      return res.json({ ok: true, session });
+    } catch (err) {
+      console.error("CREATE SESSION ERROR:", err);
+      return res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  // ===============================
+  // LIST MY SESSIONS
+  // GET /api/sessions/mine
+  // ===============================
+  router.get("/mine", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+
+      const list = await Session.find({
+        $or: [{ mentorId: userId }, { learnerId: userId }],
+      })
+        .sort({ scheduledAt: -1 })
+        .populate(
+          "mentorId",
+          "fullName email points xp streak avgRating ratingCount"
+        )
+        .populate(
+          "learnerId",
+          "fullName email points xp streak avgRating ratingCount"
+        );
+
+      const out = list.map((x) => ({
+        ...x.toObject(),
+        mentor: pickUser(x.mentorId),
+        learner: pickUser(x.learnerId),
+      }));
+
+      return res.json({ sessions: out });
+    } catch (err) {
+      console.error("LIST SESSIONS ERROR:", err);
+      return res.status(500).json({ error: "Failed to list sessions" });
+    }
+  });
+
+  // ============================================================
+  // PATCH /api/sessions/:id/status { status }
+  // ============================================================
+  router.patch("/:id/status", authMiddleware, async (req, res) => {
+    return updateStatusInternal(req, res, req.body?.status);
+  });
+
+  // ============================================================
+  // SAFE ENDPOINTS (additive)
+  // ============================================================
+  router.post("/:id/accept", authMiddleware, async (req, res) => {
+    return updateStatusInternal(req, res, "accepted");
+  });
+
+  router.post("/:id/reject", authMiddleware, async (req, res) => {
+    return updateStatusInternal(req, res, "rejected");
+  });
+
+  router.post("/:id/cancel", authMiddleware, async (req, res) => {
+    return updateStatusInternal(req, res, "cancelled");
+  });
+
+  router.post("/:id/complete", authMiddleware, async (req, res) => {
+    return updateStatusInternal(req, res, "completed");
+  });
+
+  // ============================================================
+  // ✅ JOIN SESSION (new, additive)
+  // POST /api/sessions/:id/join
+  // - marks joinedAt
+  // - records joinedBy (mentor/learner)
+  // - used to gate completion
+  // ============================================================
+  router.post("/:id/join", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+
+      const isMentor = mentorId === userId;
+      const isLearner = learnerId === userId;
+
+      if (!isMentor && !isLearner) {
+        return res.status(403).json({ error: "Not allowed" });
+      }
+
+      if (String(s.status) !== "accepted") {
+        return res
+          .status(400)
+          .json({ error: "Can join only accepted sessions" });
+      }
+
+      const ok = canJoinNow(s);
+      if (!ok.ok) {
+        return res.status(400).json({ error: `Cannot join: ${ok.reason}` });
+      }
+
+      // set joinedAt once
+      if (!s.joinedAt) s.joinedAt = new Date();
+
+      // ensure joinedBy contains user
+      const joinedBy = Array.isArray(s.joinedBy) ? s.joinedBy.map(String) : [];
+      if (!joinedBy.includes(userId)) {
+        s.joinedBy = [...(s.joinedBy || []), userId];
+      }
+
+      await s.save();
+
+      const session = await populateSession(id);
+      return res.json({ ok: true, session });
+    } catch (err) {
+      console.error("JOIN SESSION ERROR:", err);
+      return res.status(500).json({ error: "Failed to join session" });
+    }
+  });
+
+  // ===============================
+  // RATE SESSION (FIXED)
+  // POST /api/sessions/:id/rate  { rating, feedback }
+  // - uses ratingsService so avgRating/ratingCount update immediately
+  // ===============================
+  router.post("/:id/rate", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+
+      const rating = Number(req.body?.rating);
+      const feedback = String(req.body?.feedback || "").trim();
+
+      const result = await rateSession({
+        sessionId: id,
+        fromUserId: userId,
+        score: rating,
+        comment: feedback,
+      });
+
+      // Keep returning the same shape your app already expects:
+      // { ok: true, session }
+      const session = await populateSession(id);
+      return res.json({
+        ok: true,
+        session,
+        // extra info (safe additive)
+        ratedUser: result?.updatedUser || null,
+        rating: result?.rating || null,
+      });
+    } catch (err) {
+      const status = Number(err?.status || 500);
+      console.error("RATE SESSION ERROR:", err);
+      return res
+        .status(status)
+        .json({ error: err?.message || "Failed to rate session" });
+    }
+  });
+
+  return router;
+};
+</file>
+
+<file path="app/(tabs)/_layout.tsx">
+// app/(tabs)/_layout.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Tabs, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
+
+export default function TabLayout() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem("token");
+        if (!mounted) return;
+
+        if (!token) {
+          router.replace("/(auth)/login" as any);
+          return;
+        }
+      } finally {
+        if (mounted) setChecking(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
+
+  if (checking) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#020617",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator />
+        <Text style={{ color: "#94A3B8", marginTop: 10 }}>Loading...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: "#020617",
+          borderTopColor: "#0B1120",
+        },
+        tabBarActiveTintColor: "#F97316",
+        tabBarInactiveTintColor: "#94A3B8",
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "Home",
+          tabBarIcon: ({ color }) => (
+            <Text style={{ color, fontSize: 16 }}>🏠</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: "Explore",
+          tabBarIcon: ({ color }) => (
+            <Text style={{ color, fontSize: 16 }}>🧭</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          title: "Chats",
+          tabBarIcon: ({ color }) => (
+            <Text style={{ color, fontSize: 16 }}>💬</Text>
+          ),
+        }}
+      />
+    </Tabs>
+  );
+}
+</file>
+
+<file path="app/(tabs)/index.tsx">
+import HomeScreen from "../screens/HomeScreen";
+
+export default function TabHome() {
+  return <HomeScreen />;
+}
+</file>
+
 <file path="app/sessions/components/SessionCard.tsx">
 // app/sessions/components/SessionCard.tsx
 import { useRouter } from "expo-router";
@@ -21824,8 +22010,312 @@ function ActionBtn({
 }
 </file>
 
-<file path="app/signup.tsx">
+<file path="lib/api.ts">
+// lib/api.ts
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
+function getDevHostFromExpo(): string | null {
+  // Expo dev host (often available in dev mode)
+  const anyConst = Constants as any;
+
+  // common places across SDKs
+  const debuggerHost: string | undefined = anyConst?.debuggerHost;
+  const hostUri: string | undefined = anyConst?.expoConfig?.hostUri;
+
+  const raw = debuggerHost || hostUri || "";
+  if (!raw) return null;
+
+  // examples:
+  // "192.168.1.50:8081"
+  // "exp://192.168.1.50:8081"
+  // "http://192.168.1.50:8081"
+  const cleaned = raw
+    .replace("exp://", "")
+    .replace("http://", "")
+    .replace("https://", "");
+  const host = cleaned.split(":")[0]?.trim();
+  return host || null;
+}
+
+function resolveApiUrl(): string {
+  const envUrlRaw = (process.env.EXPO_PUBLIC_API_URL || "").trim();
+
+  // In Web we can safely use localhost if server is on same machine
+  if (Platform.OS === "web") {
+    // Prefer explicit env if provided
+    if (envUrlRaw) return envUrlRaw;
+
+    const host =
+      (typeof window !== "undefined" && window.location?.hostname) || "localhost";
+    return `http://${host}:4000`;
+  }
+
+  // Native (Android/iOS)
+  // If user mistakenly set localhost in env, it breaks real devices.
+  // We'll ignore localhost env on native and auto-resolve correctly.
+  const envIsLocalhost =
+    envUrlRaw.includes("localhost") || envUrlRaw.includes("127.0.0.1");
+
+  if (envUrlRaw && !envIsLocalhost) {
+    return envUrlRaw;
+  }
+
+  const hostFromExpo = getDevHostFromExpo();
+
+  // Android emulator special-case
+  if (Platform.OS === "android") {
+    if (!hostFromExpo) return "http://10.0.2.2:4000";
+    if (hostFromExpo === "localhost" || hostFromExpo === "127.0.0.1") {
+      return "http://10.0.2.2:4000";
+    }
+    return `http://${hostFromExpo}:4000`;
+  }
+
+  // iOS simulator / real device
+  if (hostFromExpo) return `http://${hostFromExpo}:4000`;
+
+  // Last fallback
+  return "http://localhost:4000";
+}
+
+export const API_URL = resolveApiUrl();
+console.log("🔗 API_URL resolved to:", API_URL);
+
+async function handleResponse(res: Response) {
+  const text = await res.text();
+
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!res.ok) {
+    console.log("API ERROR =>", {
+      url: res.url,
+      status: res.status,
+      rawBody: text,
+      parsed: data,
+    });
+
+    const message =
+      (data && (data as any).error) ||
+      (data && (data as any).message) ||
+      (typeof data === "string" && data) ||
+      `Request failed with status ${res.status}`;
+
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+// ---------- AUTH ----------
+export async function signup(params: {
+  fullName: string;
+  email: string;
+  password: string;
+}) {
+  const res = await fetch(`${API_URL}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return handleResponse(res);
+}
+
+export async function login(params: { email: string; password: string }) {
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return handleResponse(res);
+}
+
+// ---------- TYPES ----------
+export type AvailabilitySlot = { dayOfWeek: number; from: string; to: string };
+export type SkillTeach = { name: string; level: string };
+export type SkillLearn = { name: string; level: string };
+
+export type MentorMatch = {
+  mentorId: string;
+  fullName: string;
+  matchScore: number;
+  mainMatchedSkill?: { name: string; level: string; similarityScore: number };
+  skillsToTeach?: SkillTeach[];
+  availabilitySlots?: AvailabilitySlot[];
+};
+
+export type MatchingMode = "local" | "openai" | "hybrid";
+
+export type MatchingStatus = {
+  openaiAvailable: boolean;
+  reason: "OK" | "NO_KEY" | "ERROR" | string;
+  recommendedMode: "local" | "hybrid";
+};
+
+export type MatchingMeta = {
+  requestedMode: MatchingMode | null;
+  modeUsed: MatchingMode | null;
+  fallbackUsed: boolean;
+  message?: string;
+};
+
+// ---------- USER ----------
+export async function getMe(token: string) {
+  const res = await fetch(`${API_URL}/api/me`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(res);
+}
+
+// ---------- PROFILE UPDATE ----------
+export async function updateProfile(
+  token: string,
+  partial: {
+    skillsToLearn?: SkillLearn[];
+    skillsToTeach?: SkillTeach[];
+    availabilitySlots?: AvailabilitySlot[];
+  }
+) {
+  const res = await fetch(`${API_URL}/api/me/profile`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(partial),
+  });
+
+  return handleResponse(res);
+}
+
+export async function updateWeeklyAvailability(
+  token: string,
+  availabilitySlots: AvailabilitySlot[]
+) {
+  return updateProfile(token, { availabilitySlots });
+}
+
+export async function updateSkillsToTeach(token: string, skillsToTeach: SkillTeach[]) {
+  return updateProfile(token, { skillsToTeach });
+}
+
+export async function updateSkillsToLearn(token: string, skillsToLearn: SkillLearn[]) {
+  return updateProfile(token, { skillsToLearn });
+}
+
+// ---------- MATCHING STATUS ----------
+export async function getMatchingStatus(): Promise<MatchingStatus> {
+  const res = await fetch(`${API_URL}/api/matching/status`, { method: "GET" });
+  return handleResponse(res);
+}
+
+// ---------- MATCHING ----------
+export async function getMentorMatches(
+  token: string,
+  params: {
+    skill: string;
+    level: "Beginner" | "Intermediate" | "Advanced";
+    availabilitySlots?: AvailabilitySlot[];
+    mode?: MatchingMode;
+  }
+): Promise<{ results: MentorMatch[]; meta?: MatchingMeta }> {
+  const res = await fetch(`${API_URL}/api/matches/mentors`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      skill: params.skill,
+      level: params.level,
+      availabilitySlots: params.availabilitySlots ?? [],
+      mode: params.mode,
+    }),
+  });
+
+  return handleResponse(res);
+}
+
+// ---------- PUBLIC USER PROFILE (Mentor) ----------
+export type PublicUserProfile = {
+  id: string;
+  fullName: string;
+  points: number;
+  xp: number;
+  streak: number;
+  avgRating: number;
+  ratingCount: number;
+  skillsToTeach: SkillTeach[];
+  availabilitySlots: AvailabilitySlot[];
+  preferences?: { communicationModes?: string[]; languages?: string[] };
+};
+
+export async function getPublicUserProfile(token: string, userId: string): Promise<PublicUserProfile> {
+  const res = await fetch(`${API_URL}/api/users/${userId}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(res);
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "our-final-app",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "reset-project": "node ./scripts/reset-project.js",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "lint": "expo lint"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
+    "@react-navigation/bottom-tabs": "^7.4.0",
+    "@react-navigation/elements": "^2.6.3",
+    "@react-navigation/native": "^7.1.8",
+    "expo": "~54.0.24",
+    "expo-constants": "~18.0.10",
+    "expo-font": "~14.0.9",
+    "expo-haptics": "~15.0.7",
+    "expo-image": "~3.0.10",
+    "expo-linking": "~8.0.9",
+    "expo-router": "~6.0.15",
+    "expo-splash-screen": "~31.0.11",
+    "expo-status-bar": "~3.0.8",
+    "expo-symbols": "~1.0.7",
+    "expo-system-ui": "~6.0.8",
+    "expo-web-browser": "~15.0.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets": "0.5.1",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "eslint": "^9.25.0",
+    "eslint-config-expo": "~10.0.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
 </file>
 
 <file path="server/models/User.js">
@@ -21892,33 +22382,6 @@ const UserSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("User", UserSchema);
-</file>
-
-<file path="server/package.json">
-{
-  "name": "skillswap-backend",
-  "version": "1.0.0",
-  "main": "server.js",
-  "type": "commonjs",
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.0.1",
-    "openai": "^6.10.0",
-    "socket.io": "^4.8.3"
-  }
-}
-</file>
-
-<file path="app/(tabs)/index.tsx">
-import HomeScreen from "../screens/HomeScreen";
-
-export default function TabHome() {
-  return <HomeScreen />;
-}
 </file>
 
 <file path="app/screens/HomeScreen.tsx">
@@ -22643,314 +23106,6 @@ const styles = StyleSheet.create({
   },
   logoutText: { color: "#E5E7EB", fontSize: 12, fontWeight: "800" },
 });
-</file>
-
-<file path="lib/api.ts">
-// lib/api.ts
-import Constants from "expo-constants";
-import { Platform } from "react-native";
-
-function getDevHostFromExpo(): string | null {
-  // Expo dev host (often available in dev mode)
-  const anyConst = Constants as any;
-
-  // common places across SDKs
-  const debuggerHost: string | undefined = anyConst?.debuggerHost;
-  const hostUri: string | undefined = anyConst?.expoConfig?.hostUri;
-
-  const raw = debuggerHost || hostUri || "";
-  if (!raw) return null;
-
-  // examples:
-  // "192.168.1.50:8081"
-  // "exp://192.168.1.50:8081"
-  // "http://192.168.1.50:8081"
-  const cleaned = raw
-    .replace("exp://", "")
-    .replace("http://", "")
-    .replace("https://", "");
-  const host = cleaned.split(":")[0]?.trim();
-  return host || null;
-}
-
-function resolveApiUrl(): string {
-  const envUrlRaw = (process.env.EXPO_PUBLIC_API_URL || "").trim();
-
-  // In Web we can safely use localhost if server is on same machine
-  if (Platform.OS === "web") {
-    // Prefer explicit env if provided
-    if (envUrlRaw) return envUrlRaw;
-
-    const host =
-      (typeof window !== "undefined" && window.location?.hostname) || "localhost";
-    return `http://${host}:4000`;
-  }
-
-  // Native (Android/iOS)
-  // If user mistakenly set localhost in env, it breaks real devices.
-  // We'll ignore localhost env on native and auto-resolve correctly.
-  const envIsLocalhost =
-    envUrlRaw.includes("localhost") || envUrlRaw.includes("127.0.0.1");
-
-  if (envUrlRaw && !envIsLocalhost) {
-    return envUrlRaw;
-  }
-
-  const hostFromExpo = getDevHostFromExpo();
-
-  // Android emulator special-case
-  if (Platform.OS === "android") {
-    if (!hostFromExpo) return "http://10.0.2.2:4000";
-    if (hostFromExpo === "localhost" || hostFromExpo === "127.0.0.1") {
-      return "http://10.0.2.2:4000";
-    }
-    return `http://${hostFromExpo}:4000`;
-  }
-
-  // iOS simulator / real device
-  if (hostFromExpo) return `http://${hostFromExpo}:4000`;
-
-  // Last fallback
-  return "http://localhost:4000";
-}
-
-export const API_URL = resolveApiUrl();
-console.log("🔗 API_URL resolved to:", API_URL);
-
-async function handleResponse(res: Response) {
-  const text = await res.text();
-
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  if (!res.ok) {
-    console.log("API ERROR =>", {
-      url: res.url,
-      status: res.status,
-      rawBody: text,
-      parsed: data,
-    });
-
-    const message =
-      (data && (data as any).error) ||
-      (data && (data as any).message) ||
-      (typeof data === "string" && data) ||
-      `Request failed with status ${res.status}`;
-
-    throw new Error(message);
-  }
-
-  return data;
-}
-
-// ---------- AUTH ----------
-export async function signup(params: {
-  fullName: string;
-  email: string;
-  password: string;
-}) {
-  const res = await fetch(`${API_URL}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  return handleResponse(res);
-}
-
-export async function login(params: { email: string; password: string }) {
-  const res = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  return handleResponse(res);
-}
-
-// ---------- TYPES ----------
-export type AvailabilitySlot = { dayOfWeek: number; from: string; to: string };
-export type SkillTeach = { name: string; level: string };
-export type SkillLearn = { name: string; level: string };
-
-export type MentorMatch = {
-  mentorId: string;
-  fullName: string;
-  matchScore: number;
-  mainMatchedSkill?: { name: string; level: string; similarityScore: number };
-  skillsToTeach?: SkillTeach[];
-  availabilitySlots?: AvailabilitySlot[];
-};
-
-export type MatchingMode = "local" | "openai" | "hybrid";
-
-export type MatchingStatus = {
-  openaiAvailable: boolean;
-  reason: "OK" | "NO_KEY" | "ERROR" | string;
-  recommendedMode: "local" | "hybrid";
-};
-
-export type MatchingMeta = {
-  requestedMode: MatchingMode | null;
-  modeUsed: MatchingMode | null;
-  fallbackUsed: boolean;
-  message?: string;
-};
-
-// ---------- USER ----------
-export async function getMe(token: string) {
-  const res = await fetch(`${API_URL}/api/me`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return handleResponse(res);
-}
-
-// ---------- PROFILE UPDATE ----------
-export async function updateProfile(
-  token: string,
-  partial: {
-    skillsToLearn?: SkillLearn[];
-    skillsToTeach?: SkillTeach[];
-    availabilitySlots?: AvailabilitySlot[];
-  }
-) {
-  const res = await fetch(`${API_URL}/api/me/profile`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(partial),
-  });
-
-  return handleResponse(res);
-}
-
-export async function updateWeeklyAvailability(
-  token: string,
-  availabilitySlots: AvailabilitySlot[]
-) {
-  return updateProfile(token, { availabilitySlots });
-}
-
-export async function updateSkillsToTeach(token: string, skillsToTeach: SkillTeach[]) {
-  return updateProfile(token, { skillsToTeach });
-}
-
-export async function updateSkillsToLearn(token: string, skillsToLearn: SkillLearn[]) {
-  return updateProfile(token, { skillsToLearn });
-}
-
-// ---------- MATCHING STATUS ----------
-export async function getMatchingStatus(): Promise<MatchingStatus> {
-  const res = await fetch(`${API_URL}/api/matching/status`, { method: "GET" });
-  return handleResponse(res);
-}
-
-// ---------- MATCHING ----------
-export async function getMentorMatches(
-  token: string,
-  params: {
-    skill: string;
-    level: "Beginner" | "Intermediate" | "Advanced";
-    availabilitySlots?: AvailabilitySlot[];
-    mode?: MatchingMode;
-  }
-): Promise<{ results: MentorMatch[]; meta?: MatchingMeta }> {
-  const res = await fetch(`${API_URL}/api/matches/mentors`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      skill: params.skill,
-      level: params.level,
-      availabilitySlots: params.availabilitySlots ?? [],
-      mode: params.mode,
-    }),
-  });
-
-  return handleResponse(res);
-}
-
-// ---------- PUBLIC USER PROFILE (Mentor) ----------
-export type PublicUserProfile = {
-  id: string;
-  fullName: string;
-  points: number;
-  xp: number;
-  streak: number;
-  avgRating: number;
-  ratingCount: number;
-  skillsToTeach: SkillTeach[];
-  availabilitySlots: AvailabilitySlot[];
-  preferences?: { communicationModes?: string[]; languages?: string[] };
-};
-
-export async function getPublicUserProfile(token: string, userId: string): Promise<PublicUserProfile> {
-  const res = await fetch(`${API_URL}/api/users/${userId}`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return handleResponse(res);
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "our-final-app",
-  "main": "expo-router/entry",
-  "version": "1.0.0",
-  "scripts": {
-    "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "lint": "expo lint"
-  },
-  "dependencies": {
-    "@expo/vector-icons": "^15.0.3",
-    "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-native-community/datetimepicker": "8.4.4",
-    "@react-navigation/bottom-tabs": "^7.4.0",
-    "@react-navigation/elements": "^2.6.3",
-    "@react-navigation/native": "^7.1.8",
-    "expo": "~54.0.24",
-    "expo-constants": "~18.0.10",
-    "expo-font": "~14.0.9",
-    "expo-haptics": "~15.0.7",
-    "expo-image": "~3.0.10",
-    "expo-linking": "~8.0.9",
-    "expo-router": "~6.0.15",
-    "expo-splash-screen": "~31.0.11",
-    "expo-status-bar": "~3.0.8",
-    "expo-symbols": "~1.0.7",
-    "expo-system-ui": "~6.0.8",
-    "expo-web-browser": "~15.0.9",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-gesture-handler": "~2.28.0",
-    "react-native-reanimated": "~4.1.1",
-    "react-native-safe-area-context": "~5.6.0",
-    "react-native-screens": "~4.16.0",
-    "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.5.1",
-    "socket.io-client": "^4.8.3"
-  },
-  "devDependencies": {
-    "@types/react": "~19.1.0",
-    "eslint": "^9.25.0",
-    "eslint-config-expo": "~10.0.0",
-    "typescript": "~5.9.2"
-  },
-  "private": true
-}
 </file>
 
 <file path="server/server.js">
