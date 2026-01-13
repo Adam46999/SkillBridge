@@ -18,6 +18,7 @@ import {
 import { getMe } from "../../../lib/api";
 import {
   getConversationMessages,
+  markConversationReadRest,
   sendMessageRest,
   type ChatMessage,
 } from "../../../lib/chat/api";
@@ -25,13 +26,17 @@ import {
 import {
   connectChatSocket,
   disconnectChatSocket,
+  getPresenceSnapshot,
   joinConversationRoom,
   markConversationRead,
   onConnectionStatus,
   onNewMessage,
   onPeerTyping,
   onPresenceUpdate,
+  onReadReceipt,
   sendRealtimeMessage,
+  unwatchPresence,
+  watchPresence,
   type RealtimeMessage,
 } from "../../../lib/chat/socket";
 
@@ -87,6 +92,9 @@ export default function ConversationScreen() {
   const [peerOnline, setPeerOnline] = useState(false);
   const [peerLastSeenIso, setPeerLastSeenIso] = useState<string | null>(null);
 
+  // ✅ for Seen status
+  const [peerReadAtIso, setPeerReadAtIso] = useState<string | null>(null);
+
   const [paging, setPaging] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
@@ -100,6 +108,23 @@ export default function ConversationScreen() {
     if (!sorted.length) return null;
     return sorted[0]?.createdAt || null;
   }, [sorted]);
+
+  const safeMarkRead = useCallback(
+    async (token: string) => {
+      if (!convId) return;
+
+      // socket event (fast)
+      try {
+        markConversationRead(convId);
+      } catch {}
+
+      // REST (source of truth)
+      try {
+        await markConversationReadRest(token, convId);
+      } catch {}
+    },
+    [convId]
+  );
 
   const boot = useCallback(async () => {
     if (!convId) {
@@ -124,7 +149,6 @@ export default function ConversationScreen() {
       const myId = String(me?.user?._id || "");
       setMeId(myId);
 
-      // ✅ API returns { items: ChatMessage[] }
       const first = await getConversationMessages(token, convId, { limit: 50 });
       if (!mountedRef.current) return () => {};
 
@@ -132,13 +156,24 @@ export default function ConversationScreen() {
       setItems(firstArr);
       setHasMore(firstArr.length >= 50);
 
-      // ✅ connect socket (socket.ts handles re-join on reconnect)
       connectChatSocket(token);
-
-      // ✅ join once now (and will re-join on reconnect from socket.ts)
       joinConversationRoom(convId, peerId);
 
       cleanupFns.push(onConnectionStatus(setConn));
+
+      // ✅ Presence: snapshot + watch realtime
+      if (peerId) {
+        watchPresence(peerId);
+
+        void (async () => {
+          const snap = await getPresenceSnapshot(peerId);
+          if (!mountedRef.current) return;
+          if (snap && String(snap.userId) === String(peerId)) {
+            setPeerOnline(!!snap.online);
+            setPeerLastSeenIso(snap.lastSeen ? String(snap.lastSeen) : null);
+          }
+        })();
+      }
 
       cleanupFns.push(
         onNewMessage((m) => {
@@ -150,7 +185,10 @@ export default function ConversationScreen() {
             return [...prev, cm];
           });
 
-          void markConversationRead(convId);
+          // mark read only if message is from peer (not me)
+          if (String(cm.senderId) !== String(myId)) {
+            void safeMarkRead(token);
+          }
         })
       );
 
@@ -180,7 +218,21 @@ export default function ConversationScreen() {
         })
       );
 
-      void markConversationRead(convId);
+      // ✅ Read receipts
+      cleanupFns.push(
+        onReadReceipt((p) => {
+          if (String(p.conversationId) !== convId) return;
+
+          // receipt from peer means: peer has read my messages
+          if (peerId && String(p.readerId) === String(peerId)) {
+            setPeerReadAtIso(
+              p.readAt ? String(p.readAt) : new Date().toISOString()
+            );
+          }
+        })
+      );
+
+      void safeMarkRead(token);
 
       return () => {
         cleanupFns.forEach((fn) => {
@@ -192,7 +244,7 @@ export default function ConversationScreen() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [convId, peerId, router]);
+  }, [convId, peerId, router, safeMarkRead]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -213,10 +265,13 @@ export default function ConversationScreen() {
         if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       } catch {}
 
-      // ✅ disconnect ONCE (no double disconnect / no looping)
+      try {
+        if (peerId) unwatchPresence(peerId);
+      } catch {}
+
       disconnectChatSocket();
     };
-  }, [boot]);
+  }, [boot, peerId]);
 
   const loadOlder = useCallback(async () => {
     if (paging || !hasMore || !oldestIso) return;
@@ -226,7 +281,6 @@ export default function ConversationScreen() {
 
     setPaging(true);
     try {
-      // ✅ API returns { items: ChatMessage[] }
       const older = await getConversationMessages(token, convId, {
         limit: 50,
         before: oldestIso,
@@ -279,6 +333,19 @@ export default function ConversationScreen() {
     }
   }, [convId, router, sending, text]);
 
+  const openPeerProfile = useCallback(() => {
+    if (!peerId) return;
+    router.push(`/mentor/${peerId}` as any);
+  }, [peerId, router]);
+
+  const requestSessionFromChat = useCallback(() => {
+    if (!peerId) return;
+    router.push({
+      pathname: "/sessions/request" as any,
+      params: { mentorId: peerId, mentorName: peerName },
+    });
+  }, [peerId, peerName, router]);
+
   if (loading) {
     return (
       <View
@@ -310,6 +377,10 @@ export default function ConversationScreen() {
         peerTyping={peerTyping}
         peerOnline={peerOnline}
         peerLastSeenIso={peerLastSeenIso}
+        // ✅ new actions
+        onPressTitle={openPeerProfile}
+        onPressAvatar={openPeerProfile}
+        onRequestSession={requestSessionFromChat}
       />
 
       <MessagesList
@@ -318,6 +389,8 @@ export default function ConversationScreen() {
         paging={paging}
         hasMore={hasMore}
         onLoadOlder={loadOlder}
+        // ✅ pass read timestamp for Seen UI
+        peerReadAtIso={peerReadAtIso}
       />
 
       <ChatInput

@@ -69,10 +69,10 @@ export async function getChatInbox(token: string): Promise<ChatInboxItem[]> {
     },
   });
 
-
   const data = await handleResponse(res);
   return Array.isArray(data?.items) ? (data.items as ChatInboxItem[]) : [];
 }
+
 // ---- inbox cache (fast boot) ----
 const INBOX_CACHE_KEY = "chat_inbox_cache_v1";
 
@@ -116,6 +116,28 @@ export async function getOrCreateConversation(
   const conversationId = String(data?.conversationId || "").trim();
   if (!conversationId) throw new Error("Invalid conversationId");
   return conversationId;
+}
+
+/**
+ * ✅ POST /api/chat/:conversationId/read
+ * marks all messages as read for current user
+ */
+export async function markConversationReadRest(
+  token: string,
+  conversationId: string
+): Promise<{ ok: true; modified: number }> {
+  const res = await fetch(
+    `${API_URL}/api/chat/${encodeURIComponent(conversationId)}/read`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeader(token),
+      },
+    }
+  );
+
+  const data = await handleResponse(res);
+  return { ok: true, modified: Number(data?.modified || 0) };
 }
 
 /**

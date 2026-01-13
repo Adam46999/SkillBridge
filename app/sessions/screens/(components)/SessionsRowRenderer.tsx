@@ -10,13 +10,21 @@ type Props = {
   token: string | null;
   currentUserId: string | null;
   onChanged: () => Promise<void> | void;
+
+  // ✅ NEW
+  onDeletedLocal?: (sessionId: string) => void;
 };
 
 function pluralize(n: number, one: string, many: string) {
   return n === 1 ? one : many;
 }
 
-export function useRowRenderer({ token, currentUserId, onChanged }: Props) {
+export function useRowRenderer({
+  token,
+  currentUserId,
+  onChanged,
+  onDeletedLocal,
+}: Props) {
   const safeOnChanged = useCallback(async () => {
     try {
       await onChanged?.();
@@ -74,7 +82,6 @@ export function useRowRenderer({ token, currentUserId, onChanged }: Props) {
           <Pressable
             onPress={() => {
               if (!sid) return;
-              // ✅ gate only (SessionCard still handles actions)
               canTap(sid);
             }}
             style={({ pressed }) => [
@@ -87,12 +94,14 @@ export function useRowRenderer({ token, currentUserId, onChanged }: Props) {
               token={token}
               currentUserId={currentUserId}
               onChanged={safeOnChanged}
+              // ✅ NEW (SessionCard رح نستعمله بعد شوي)
+              onDeletedLocal={onDeletedLocal}
             />
           </Pressable>
         </View>
       );
     },
-    [token, currentUserId, safeOnChanged, canTap]
+    [token, currentUserId, safeOnChanged, canTap, onDeletedLocal]
   );
 }
 

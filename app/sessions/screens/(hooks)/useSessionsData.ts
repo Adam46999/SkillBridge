@@ -13,8 +13,10 @@ type LoadOpts = {
   force?: boolean; // تجاهل الكاش واعمل fetch مباشر
 };
 
-function cacheKey(scope: Scope) {
-  return `sessions_cache_v1:${scope}`;
+function cacheKey(scope: Scope, userId?: string | null) {
+  // ✅ FIX: make cache per-user to avoid showing previous account sessions
+  const uid = (userId || "anon").trim() || "anon";
+  return `sessions_cache_v1:${uid}:${scope}`;
 }
 
 function safeJsonParse<T>(txt: string | null): T | null {
@@ -35,6 +37,44 @@ function sortSessions(list: SessionDTO[]) {
         new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
     );
 }
+function pickUserId(me: any): string | null {
+  const candidates = [
+    me?.id,
+    me?._id,
+    me?.user?.id,
+    me?.user?._id,
+    me?.data?.id,
+    me?.data?._id,
+    me?.profile?.id,
+    me?.profile?._id,
+    me?.userId,
+  ]
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+
+  return candidates[0] || null;
+}
+
+function decodeJwtUserId(token: string): string | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+
+    // base64url -> base64
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const json = Buffer.from(b64 + pad, "base64").toString("utf8");
+    const payload = JSON.parse(json);
+
+    const id =
+      payload?.id || payload?._id || payload?.userId || payload?.sub || null;
+
+    const out = String(id || "").trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
 
 export function useSessionsData(scope: Scope) {
   const router = useRouter();
@@ -42,7 +82,7 @@ export function useSessionsData(scope: Scope) {
   const mountedRef = useRef(true);
   const tokenRef = useRef<string | null>(null);
   const meIdRef = useRef<string | null>(null);
-const didMountRef = useRef(false);
+  const didMountRef = useRef(false);
 
   // لمنع race conditions
   const reqSeqRef = useRef(0);
@@ -68,171 +108,154 @@ const didMountRef = useRef(false);
     tokenRef.current = t;
 
     if (mountedRef.current) setToken(t);
+
     return t;
   }, []);
+const ensureMe = useCallback(async () => {
+  if (meIdRef.current) return meIdRef.current;
 
-  const ensureMeId = useCallback(async (t: string) => {
-    if (meIdRef.current) return meIdRef.current;
+  const t = await ensureToken();
+  if (!t) return null;
 
-    const me: any = await getMe(t);
-    const id = String(me?.user?._id ?? me?._id ?? "").trim() || null;
+  const me = await getMe(t);
 
-    meIdRef.current = id;
-    if (mountedRef.current) setCurrentUserId(id);
+  // ✅ 1) حاول من الـ response بأي شكل كان
+  let id = pickUserId(me);
 
-    return id;
-  }, []);
+  // ✅ 2) fallback: طلّعها من التوكن
+  if (!id) id = decodeJwtUserId(t);
 
-  const showCacheIfAvailable = useCallback(async (scopeToUse: Scope) => {
-    const key = cacheKey(scopeToUse);
+  meIdRef.current = id;
+  if (mountedRef.current) setCurrentUserId(id);
 
-    // لا نعيد عرض الكاش بنفس السكوب كل مرة
-    if (shownCacheForScopeRef.current[key]) return;
+  return id;
+}, [ensureToken]);
 
-    const cachedRaw = await AsyncStorage.getItem(key);
-    const cached =
-      safeJsonParse<{ ts: number; items: SessionDTO[] }>(cachedRaw);
 
-    if (cached?.items?.length && mountedRef.current) {
-      setSessions(sortSessions(cached.items));
-      // إذا إحنا بأول تحميل، خلي الواجهة تطلع فوراً
-      setLoading(false);
-    }
+  const showCacheIfAvailable = useCallback(
+    async (scopeToUse: Scope, userId?: string | null) => {
+      const key = cacheKey(scopeToUse, userId);
 
-    shownCacheForScopeRef.current[key] = true;
-  }, []);
+      // لا نعيد عرض الكاش بنفس السكوب كل مرة
+      if (shownCacheForScopeRef.current[key]) return;
 
-  const writeCache = useCallback(async (scopeToUse: Scope, list: SessionDTO[]) => {
-    const key = cacheKey(scopeToUse);
-    const payload = { ts: Date.now(), items: list };
-    try {
-      await AsyncStorage.setItem(key, JSON.stringify(payload));
-    } catch {
-      // ignore
-    }
-  }, []);
+      const cachedRaw = await AsyncStorage.getItem(key);
+      const cached =
+        safeJsonParse<{ ts: number; items: SessionDTO[] }>(cachedRaw);
+
+      if (cached?.items?.length && mountedRef.current) {
+        setSessions(sortSessions(cached.items));
+      }
+
+      shownCacheForScopeRef.current[key] = true;
+    },
+    []
+  );
+
+  const writeCache = useCallback(
+    async (scopeToUse: Scope, userId: string | null, list: SessionDTO[]) => {
+      const key = cacheKey(scopeToUse, userId);
+      const payload = { ts: Date.now(), items: list };
+      try {
+        await AsyncStorage.setItem(key, JSON.stringify(payload));
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
 
   const load = useCallback(
     async (opts?: LoadOpts) => {
+      const seq = ++reqSeqRef.current;
+
       const silent = !!opts?.silent;
       const listOnly = !!opts?.listOnly;
       const force = !!opts?.force;
 
-      const seq = ++reqSeqRef.current;
+      if (!silent) {
+        if (listOnly) setLoadingList(true);
+        else setLoading(true);
+      }
+      setErrorText(null);
 
       try {
-        setErrorText(null);
-
-        // ✅ كاش سريع (SWR) إذا مش force
-        if (!force) {
-          await showCacheIfAvailable(scope);
+        const t = await ensureToken();
+        if (!t) {
+          // user not logged in -> go to login
+          if (mountedRef.current) router.replace("/auth/login" as any);
+          return;
         }
 
-        if (!silent && !listOnly) setLoading(true);
-        if (listOnly) setLoadingList(true);
+        const meId = await ensureMe();
 
-       console.log("[sessions] load start scope=", scope);
+        // show cache quickly (unless force)
+        if (!force) {
+          await showCacheIfAvailable(scope, meId);
+        }
 
-const t = await ensureToken();
-console.log("[sessions] got token?", !!t);
+const items = await listMySessions(t);
+        const sorted = sortSessions(items);
 
-if (!t) {
-  console.log("[sessions] no token -> redirect login");
-  router.replace("/(auth)/login" as any);
-  return;
-}
+        // ignore older requests
+        if (reqSeqRef.current !== seq) return;
 
-if (!meIdRef.current) {
-  console.log("[sessions] fetching me...");
-  await ensureMeId(t);
-  console.log("[sessions] me id =", meIdRef.current);
-}
+        if (mountedRef.current) {
+          setSessions(sorted);
+        }
 
-console.log("[sessions] calling listMySessions...");
-const data = await listMySessions(t, { scope });
-console.log("[sessions] listMySessions returned:", Array.isArray(data) ? data.length : data);
-
-
-        // ✅ تجاهل نتائج قديمة لو كان في طلب أحدث
-        if (!mountedRef.current) return;
-        if (seq !== reqSeqRef.current) return;
-
-        const next = sortSessions(Array.isArray(data) ? data : []);
-        setSessions(next);
-        void writeCache(scope, next);
+        if (meId) {
+          await writeCache(scope, meId, sorted);
+        }
       } catch (e: any) {
-        if (!mountedRef.current) return;
-        if (seq !== reqSeqRef.current) return;
-        setErrorText(e?.message || "Failed to load sessions.");
-      } finally {
-        if (!mountedRef.current) return;
-        if (seq !== reqSeqRef.current) return;
+        if (reqSeqRef.current !== seq) return;
 
-        if (!silent && !listOnly) setLoading(false);
-        if (listOnly) setLoadingList(false);
+        const msg = e?.message || "Failed to load sessions";
+        if (mountedRef.current) setErrorText(msg);
+      } finally {
+        if (!silent) {
+          if (listOnly) setLoadingList(false);
+          else setLoading(false);
+        }
         setRefreshing(false);
       }
     },
-    [ensureMeId, ensureToken, router, scope, showCacheIfAvailable, writeCache]
+    [ensureMe, ensureToken, router, scope, showCacheIfAvailable, writeCache]
   );
 
-  // ✅ Initial boot (يعرض كاش + fetch)
-  useEffect(() => {
-  mountedRef.current = true;
-
-  // أول مرة: خليها تعمل load عادي (يعرض كاش ثم يجدد)
-  void load({ silent: false, listOnly: false });
-
-  return () => {
-    mountedRef.current = false;
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
-
-  // ✅ When scope changes: show cache instantly + refresh list only
-  useEffect(() => {
-  if (!mountedRef.current) return;
-
-  // ✅ skip first run (important) — prevents double-load on mount
-  if (!didMountRef.current) {
-    didMountRef.current = true;
-    return;
-  }
-
-  // اعرض كاش للسكوب الجديد فوراً، وبعدين fetch خفيف
-  void showCacheIfAvailable(scope);
-  void load({ silent: true, listOnly: true });
-}, [scope, load, showCacheIfAvailable]);
-
-
-  const onRefresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
-    void load({ silent: true, listOnly: true, force: true });
+    await load({ silent: true, force: true });
   }, [load]);
 
-  return useMemo(
-    () => ({
-      token,
-      currentUserId,
-      sessions,
-      loading,
-      loadingList,
-      refreshing,
-      errorText,
-      load,
-      onRefresh,
-    }),
-    [
-      token,
-      currentUserId,
-      sessions,
-      loading,
-      loadingList,
-      refreshing,
-      errorText,
-      load,
-      onRefresh,
-    ]
-  );
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (didMountRef.current) {
+      load({ listOnly: true });
+      return;
+    }
+    didMountRef.current = true;
+    load();
+  }, [load]);
+
+  const hasAny = useMemo(() => sessions.length > 0, [sessions.length]);
+
+  return {
+    token,
+    currentUserId,
+    sessions,
+    loading,
+    loadingList,
+    refreshing,
+    errorText,
+    load,
+    refresh,
+    hasAny,
+  };
 }

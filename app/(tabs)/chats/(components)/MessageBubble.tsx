@@ -5,6 +5,9 @@ import type { ChatMessage } from "../../../../lib/chat/api";
 type Props = {
   item: ChatMessage;
   mine: boolean;
+  isLastMine?: boolean;
+  lastMineId?: string | null;
+  seen?: boolean;
 };
 
 function formatTime(iso: string) {
@@ -16,11 +19,19 @@ function formatTime(iso: string) {
   });
 }
 
-export default function MessageBubble({ item, mine }: Props) {
+export default function MessageBubble({ item, mine, isLastMine, seen }: Props) {
   const time = useMemo(
     () => formatTime(String((item as any)?.createdAt || "")),
     [item]
   );
+
+  const tickText = useMemo(() => {
+    if (!mine) return "";
+    // ✓ = sent/delivered (basic)
+    // ✓✓ = seen (only show when this is the last mine)
+    if (isLastMine && seen) return "✓✓";
+    return "✓";
+  }, [isLastMine, mine, seen]);
 
   return (
     <View style={[styles.row, mine ? styles.rowMine : styles.rowTheirs]}>
@@ -38,7 +49,18 @@ export default function MessageBubble({ item, mine }: Props) {
           >
             {time}
           </Text>
-          {mine ? <Text style={styles.tick}>✓</Text> : null}
+
+          {mine ? (
+            <Text
+              style={[
+                styles.tick,
+                // make ✓✓ slightly more visible but keep your palette
+                isLastMine && seen ? styles.tickSeen : null,
+              ]}
+            >
+              {tickText}
+            </Text>
+          ) : null}
         </View>
       </Pressable>
     </View>
@@ -72,12 +94,15 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 6,
   },
-  time: { color: "rgba(17,24,39,0.75)", fontSize: 11, fontWeight: "900" },
-  tick: { color: "rgba(17,24,39,0.75)", fontSize: 12, fontWeight: "900" },
-  timeMine: {
-    color: "rgba(17,24,39,0.75)",
-  },
-  timeTheirs: {
-    color: "#94A3B8",
+
+  time: { fontSize: 11, fontWeight: "900" },
+  tick: { fontSize: 12, fontWeight: "900" },
+
+  timeMine: { color: "rgba(17,24,39,0.75)" },
+  timeTheirs: { color: "#94A3B8" },
+
+  tickSeen: {
+    // keep same color family but slightly stronger
+    color: "rgba(17,24,39,0.9)",
   },
 });

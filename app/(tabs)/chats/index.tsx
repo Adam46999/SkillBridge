@@ -17,11 +17,7 @@ import {
   setInboxCache,
   type ChatInboxItem,
 } from "../../../lib/chat/api";
-import {
-  connectChatSocket,
-  disconnectChatSocket,
-  onNewMessage,
-} from "../../../lib/chat/socket";
+import { connectChatSocket, onNewMessage } from "../../../lib/chat/socket";
 
 function initials(name?: string) {
   const n = String(name || "").trim();
@@ -182,9 +178,6 @@ export default function ChatsInboxScreen() {
         mountedRef.current = false;
         try {
           offMsg?.();
-        } catch {}
-        try {
-          disconnectChatSocket();
         } catch {}
       };
     }, [load])

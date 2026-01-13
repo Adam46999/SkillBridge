@@ -264,24 +264,58 @@ const io = new Server(server, {
 const userSocketsCount = new Map(); // userId -> count
 const lastSeenMap = new Map(); // userId -> Date ISO
 
-function setOnline(userId) {
+function incOnline(userId) {
   const prev = userSocketsCount.get(userId) || 0;
-  userSocketsCount.set(userId, prev + 1);
+  const next = prev + 1;
+  userSocketsCount.set(userId, next);
+  return { prev, next, firstOnline: prev === 0 };
 }
 
-function setOffline(userId) {
+function decOnline(userId) {
   const prev = userSocketsCount.get(userId) || 0;
   const next = Math.max(0, prev - 1);
+
   if (next === 0) {
     userSocketsCount.delete(userId);
     lastSeenMap.set(userId, new Date().toISOString());
-  } else {
-    userSocketsCount.set(userId, next);
+    return { prev, next, wentOffline: prev > 0 };
   }
+
+  userSocketsCount.set(userId, next);
+  return { prev, next, wentOffline: false };
 }
 
 function isOnline(userId) {
   return (userSocketsCount.get(userId) || 0) > 0;
+}
+
+function presencePayload(userId) {
+  const uid = String(userId);
+  return {
+    userId: uid,
+    online: isOnline(uid),
+    lastSeen: lastSeenMap.get(uid) || null,
+  };
+}
+
+// watchers room per user
+function presenceWatchRoom(userId) {
+  return `presence:watch:${String(userId)}`;
+}
+
+async function emitPresenceToConversationsOfUser(userId) {
+  const uid = String(userId);
+  try {
+    const convs = await Conversation.find({ participants: uid })
+      .select("_id")
+      .lean();
+
+    for (const c of convs) {
+      await emitPresenceToConversation(String(c._id), uid);
+    }
+  } catch {
+    // ignore
+  }
 }
 
 async function emitPresenceToConversation(convId, userId) {
@@ -292,16 +326,19 @@ async function emitPresenceToConversation(convId, userId) {
     if (!conv) return;
 
     const participants = (conv.participants || []).map(String);
+    const payload = presencePayload(userId);
+
     for (const pid of participants) {
-      io.to(`user:${pid}`).emit("presence:update", {
-        userId: String(userId),
-        online: isOnline(String(userId)),
-        lastSeen: lastSeenMap.get(String(userId)) || null,
-      });
+      io.to(`user:${pid}`).emit("presence:update", payload);
     }
   } catch {
     // ignore
   }
+}
+
+function emitPresenceToWatchers(userId) {
+  const uid = String(userId);
+  io.to(presenceWatchRoom(uid)).emit("presence:update", presencePayload(uid));
 }
 
 // ===== JWT auth for sockets =====
@@ -332,11 +369,45 @@ io.on("connection", (socket) => {
   socket.join(`user:${me}`);
 
   // mark online + self presence
-  setOnline(me);
+  const { firstOnline } = incOnline(me);
+
+  // self update (always)
   io.to(`user:${me}`).emit("presence:update", {
     userId: me,
     online: true,
     lastSeen: lastSeenMap.get(me) || null,
+  });
+
+  // ✅ IMPORTANT: when user becomes online (first socket), notify all peers immediately
+  if (firstOnline) {
+    void emitPresenceToConversationsOfUser(me);
+    emitPresenceToWatchers(me);
+  }
+
+  // ✅ Presence snapshot (ack)
+  socket.on("presence:get", ({ userId }, cb) => {
+    try {
+      const uid = String(userId || "").trim();
+      if (!uid) return cb?.(null);
+      return cb?.(presencePayload(uid));
+    } catch {
+      return cb?.(null);
+    }
+  });
+
+  // ✅ Watch/unwatch presence (real feature now)
+  socket.on("presence:watch", ({ userId }) => {
+    const uid = String(userId || "").trim();
+    if (!uid) return;
+    socket.join(presenceWatchRoom(uid));
+    // optional immediate push for smoother UX
+    socket.emit("presence:update", presencePayload(uid));
+  });
+
+  socket.on("presence:unwatch", ({ userId }) => {
+    const uid = String(userId || "").trim();
+    if (!uid) return;
+    socket.leave(presenceWatchRoom(uid));
   });
 
   socket.on("conversation:join", async ({ conversationId, peerId }) => {
@@ -357,26 +428,10 @@ io.on("connection", (socket) => {
       // optional: peer presence immediately
       const peer = String(peerId || "").trim();
       if (peer) {
-        socket.emit("presence:update", {
-          userId: peer,
-          online: isOnline(peer),
-          lastSeen: lastSeenMap.get(peer) || null,
-        });
+        socket.emit("presence:update", presencePayload(peer));
       }
 
-      // mark as read on join (best effort)
-      await Message.updateMany(
-        {
-          conversationId: convId,
-          senderId: { $ne: me },
-          readBy: { $ne: me },
-        },
-        { $addToSet: { readBy: me } }
-      );
-
-      socket
-        .to(convId)
-        .emit("read:receipt", { conversationId: convId, readerId: me });
+      // ✅ NO read marking here. Join should NOT imply "seen".
     } catch {
       // ignore
     }
@@ -395,7 +450,7 @@ io.on("connection", (socket) => {
       const isMember = (conv.participants || []).map(String).includes(me);
       if (!isMember) return;
 
-      await Message.updateMany(
+      const res = await Message.updateMany(
         {
           conversationId: convId,
           senderId: { $ne: me },
@@ -404,9 +459,18 @@ io.on("connection", (socket) => {
         { $addToSet: { readBy: me } }
       );
 
-      socket
-        .to(convId)
-        .emit("read:receipt", { conversationId: convId, readerId: me });
+      // ✅ only emit receipt if something actually changed
+      const changed =
+        (typeof res?.modifiedCount === "number" && res.modifiedCount > 0) ||
+        (typeof res?.nModified === "number" && res.nModified > 0);
+
+      if (changed) {
+        socket.to(convId).emit("read:receipt", {
+          conversationId: convId,
+          readerId: me,
+          readAt: new Date().toISOString(),
+        });
+      }
     } catch {
       // ignore
     }
@@ -477,25 +541,14 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", async () => {
-    setOffline(me);
+    const { wentOffline } = decOnline(me);
 
-    io.to(`user:${me}`).emit("presence:update", {
-      userId: me,
-      online: isOnline(me),
-      lastSeen: lastSeenMap.get(me) || null,
-    });
+    io.to(`user:${me}`).emit("presence:update", presencePayload(me));
 
-    // best effort: notify all my conversations participants
-    try {
-      const convs = await Conversation.find({ participants: me })
-        .select("_id")
-        .lean();
-
-      for (const c of convs) {
-        await emitPresenceToConversation(String(c._id), me);
-      }
-    } catch {
-      // ignore
+    if (wentOffline) {
+      // ✅ notify all my conversations participants immediately
+      await emitPresenceToConversationsOfUser(me);
+      emitPresenceToWatchers(me);
     }
   });
 });

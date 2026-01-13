@@ -1,4 +1,3 @@
-// lib/chat/socket.ts
 import { io, Socket } from "socket.io-client";
 import { API_URL } from "../api";
 
@@ -20,6 +19,9 @@ let lastJoin: { conversationId: string; peerId: string } | null = null;
 
 // ✅ prevent duplicate global connection listeners
 let connListenersBound = false;
+
+// ✅ presence watch set (so we can re-watch on reconnect)
+const watchedPresence = new Set<string>();
 
 function normalizeCreatedAt(v: any): string {
   if (!v) return new Date().toISOString();
@@ -55,13 +57,20 @@ export function connectChatSocket(token: string) {
   if (!connListenersBound) {
     connListenersBound = true;
 
-    // if reconnect happens, rejoin last room automatically
     s.on("connect", () => {
+      // rejoin last room
       if (lastJoin?.conversationId) {
         s.emit("conversation:join", {
           conversationId: lastJoin.conversationId,
           peerId: lastJoin.peerId || "",
         });
+      }
+
+      // re-watch presence users
+      if (watchedPresence.size) {
+        for (const uid of watchedPresence) {
+          s.emit("presence:watch", { userId: uid });
+        }
       }
     });
   }
@@ -77,6 +86,7 @@ export function disconnectChatSocket() {
     currentToken = null;
     lastJoin = null;
     connListenersBound = false;
+    watchedPresence.clear();
   }
 }
 
@@ -86,7 +96,6 @@ export function joinConversationRoom(conversationId: string, peerId?: string) {
 
   const cid = String(conversationId || "").trim();
   const pid = String(peerId || "").trim();
-
   if (!cid) return;
 
   lastJoin = { conversationId: cid, peerId: pid };
@@ -169,6 +178,64 @@ export function onPresenceUpdate(
   return () => s.off("presence:update", wrapped);
 }
 
+// ✅ NEW: Read receipts (Seen)
+export function onReadReceipt(
+  handler: (p: { conversationId: string; readerId: string; readAt?: string }) => void
+) {
+  const s = socket;
+  if (!s) return () => {};
+
+  const wrapped = (payload: any) => {
+    handler({
+      conversationId: String(payload?.conversationId || ""),
+      readerId: String(payload?.readerId || ""),
+      readAt: payload?.readAt ? String(payload.readAt) : undefined,
+    });
+  };
+
+  s.on("read:receipt", wrapped);
+  return () => s.off("read:receipt", wrapped);
+}
+
+// ✅ watch/unwatch presence
+export function watchPresence(userId: string) {
+  const s = socket;
+  if (!s) return;
+  const uid = String(userId || "").trim();
+  if (!uid) return;
+  watchedPresence.add(uid);
+  s.emit("presence:watch", { userId: uid });
+}
+
+export function unwatchPresence(userId: string) {
+  const s = socket;
+  const uid = String(userId || "").trim();
+  if (!uid) return;
+  watchedPresence.delete(uid);
+  if (!s) return;
+  s.emit("presence:unwatch", { userId: uid });
+}
+
+// ✅ snapshot request (ack)
+export function getPresenceSnapshot(
+  userId: string
+): Promise<{ userId: string; online: boolean; lastSeen: string | null } | null> {
+  return new Promise((resolve) => {
+    const s = socket;
+    const uid = String(userId || "").trim();
+    if (!s || !uid) return resolve(null);
+
+    s.emit("presence:get", { userId: uid }, (resp: any) => {
+      if (!resp) return resolve(null);
+      resolve({
+        userId: String(resp?.userId || uid),
+        online: !!resp?.online,
+        lastSeen: resp?.lastSeen ? String(resp.lastSeen) : null,
+      });
+    });
+  });
+}
+
 export function onConnectionStatus(handler: (s: ConnStatus) => void) {
   const s = socket;
   if (!s) return () => {};
@@ -183,7 +250,6 @@ export function onConnectionStatus(handler: (s: ConnStatus) => void) {
   s.io.on("reconnect_attempt", onReconnectAttempt);
   s.on("connect_error", onConnectError);
 
-  // immediate
   handler(s.connected ? "connected" : "disconnected");
 
   return () => {
@@ -218,17 +284,12 @@ export function sendRealtimeMessage(
 
         const payload = resp?.message || resp;
         const msg: RealtimeMessage = {
-          id: String(payload?.id || payload?._id || ""),
+          id: String(payload?.id || payload?._id || "") || `${Date.now()}`,
           conversationId: String(payload?.conversationId || cid),
           senderId: String(payload?.senderId || ""),
           text: String(payload?.text || t),
           createdAt: normalizeCreatedAt(payload?.createdAt),
         };
-
-        if (!msg.id) {
-          // if server didn't return id, still allow optimistic success
-          msg.id = `${Date.now()}`;
-        }
 
         return resolve({ ok: true, message: msg });
       }

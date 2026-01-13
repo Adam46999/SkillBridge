@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 
 const SessionSchema = new mongoose.Schema(
   {
-    // participants
     mentorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -15,14 +14,11 @@ const SessionSchema = new mongoose.Schema(
       required: true,
     },
 
-    // skill info
     skill: { type: String, required: true, trim: true },
     level: { type: String, default: "Not specified", trim: true },
 
-    // scheduling
     scheduledAt: { type: Date, required: true },
 
-    // lifecycle
     status: {
       type: String,
       enum: ["requested", "accepted", "rejected", "cancelled", "completed"],
@@ -30,32 +26,41 @@ const SessionSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ✅ attendance tracking (additive, safe)
     joinedAt: { type: Date, default: null },
     joinedBy: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        default: [],
-      },
+      { type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] },
     ],
 
-    // ✅ timestamps for auditing (additive, safe)
     completedAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },
 
-    // optional notes
+    // ✅ cancellation meta
+    cancelReason: { type: String, default: "", trim: true },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // ✅ message for the other side when someone "deletes"
+    deleteNotice: { type: String, default: "", trim: true },
+
+    // ✅ Soft delete (hide for me)
+    hiddenFor: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] },
+    ],
+
     note: { type: String, default: "", trim: true },
 
-    // rating/feedback (optional for later)
+    // legacy/simple rating (kept)
     rating: { type: Number, min: 1, max: 5, default: null },
     feedback: { type: String, default: "", trim: true },
   },
   { timestamps: true }
 );
 
-// Helpful indexes
 SessionSchema.index({ mentorId: 1, scheduledAt: 1 });
 SessionSchema.index({ learnerId: 1, scheduledAt: 1 });
+SessionSchema.index({ hiddenFor: 1, scheduledAt: -1 });
 
 module.exports = mongoose.model("Session", SessionSchema);

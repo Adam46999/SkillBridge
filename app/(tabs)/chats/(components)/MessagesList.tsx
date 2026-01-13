@@ -18,6 +18,13 @@ type Props = {
   paging: boolean;
   hasMore: boolean;
   onLoadOlder: () => Promise<void>;
+
+  // ✅ NEW: timestamp when peer read messages in this conversation
+  // passed from ConversationScreen (peerReadAtIso state)
+  peerReadAtIso?: string | null;
+
+  // ✅ optional (backward compatible): if you still want to pass id
+  seenLastMineId?: string | null;
 };
 
 function toTime(iso: string) {
@@ -32,11 +39,12 @@ export default function MessagesList({
   paging,
   hasMore,
   onLoadOlder,
+  peerReadAtIso,
+  seenLastMineId,
 }: Props) {
   const listRef = useRef<FlatList<UiMessage>>(null);
   const loadingOlderRef = useRef(false);
 
-  // For inverted FlatList we want newest first
   const data = useMemo(() => {
     const arr = (Array.isArray(items) ? items : []).map((m) => ({
       ...m,
@@ -45,21 +53,59 @@ export default function MessagesList({
           ? (m as any).createdAt
           : new Date().toISOString(),
     }));
-    arr.sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt));
+    arr.sort((a, b) => toTime(b.createdAt) - toTime(a.createdAt)); // newest first for inverted list
     return arr;
   }, [items]);
+
+  // ✅ last outgoing (mine) message (newest mine because list is newest-first)
+  const lastMine = useMemo(() => {
+    return data.find((m) => String(m.senderId) === String(meId)) || null;
+  }, [data, meId]);
+
+  const lastMineId = lastMine?.id || null;
+
+  // ✅ if peerReadAtIso exists, and peerReadAt >= lastMine.createdAt => last mine is seen
+  const computedSeenLastMineId = useMemo(() => {
+    if (!lastMine) return null;
+    if (!peerReadAtIso) return null;
+
+    const readT = toTime(String(peerReadAtIso));
+    const msgT = toTime(String(lastMine.createdAt));
+    if (!readT || !msgT) return null;
+
+    return readT >= msgT ? String(lastMine.id) : null;
+  }, [lastMine, peerReadAtIso]);
+
+  // ✅ final seen id (prefer computed from timestamp; fallback to prop)
+  const effectiveSeenLastMineId =
+    computedSeenLastMineId || (seenLastMineId ? String(seenLastMineId) : null);
 
   const keyExtractor = useCallback((m: UiMessage) => m.id, []);
 
   const renderItem = useCallback(
     ({ item }: { item: UiMessage }) => {
       const mine = String(item.senderId) === String(meId);
-      return <MessageBubble item={item} mine={mine} />;
+      const isLastMine =
+        mine && !!lastMineId && String(item.id) === String(lastMineId);
+
+      const seen =
+        isLastMine &&
+        !!effectiveSeenLastMineId &&
+        String(effectiveSeenLastMineId) === String(item.id);
+
+      return (
+        <MessageBubble
+          item={item}
+          mine={mine}
+          isLastMine={isLastMine}
+          lastMineId={lastMineId}
+          seen={seen}
+        />
+      );
     },
-    [meId]
+    [effectiveSeenLastMineId, lastMineId, meId]
   );
 
-  // When list is inverted: onEndReached means user reached the TOP (older messages)
   const onEndReached = useCallback(async () => {
     if (!hasMore) return;
     if (paging) return;
@@ -73,9 +119,7 @@ export default function MessagesList({
     }
   }, [hasMore, onLoadOlder, paging]);
 
-  // Optional: detect if user is not at bottom (newest side)
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    // keep for future (scroll-to-bottom button)
     void e;
   }, []);
 

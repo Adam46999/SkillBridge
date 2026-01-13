@@ -66,7 +66,8 @@ module.exports = (authMiddleware) => {
           $match: {
             conversationId: { $in: convs.map((c) => c._id) },
             senderId: { $ne: new mongoose.Types.ObjectId(me) },
-            readBy: { $ne: new mongoose.Types.ObjectId(me) },
+            // ✅ FIX: array-safe "not in readBy"
+            readBy: { $nin: [new mongoose.Types.ObjectId(me)] },
           },
         },
         { $group: { _id: "$conversationId", count: { $sum: 1 } } },
@@ -163,7 +164,6 @@ module.exports = (authMiddleware) => {
       const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
       const before = String(req.query.before || "").trim();
 
-      const q = { conversationId };
       const find = {
         conversationId: new mongoose.Types.ObjectId(conversationId),
       };
@@ -198,6 +198,51 @@ module.exports = (authMiddleware) => {
     } catch (err) {
       console.error("CHAT MESSAGES ERROR:", err?.message || err);
       return res.status(500).json({ error: "Failed to load messages" });
+    }
+  });
+
+  /**
+   * ✅ POST /api/chat/:conversationId/read
+   * marks all messages (sent by other users) as read by me
+   * returns: { ok: true, modified: number }
+   */
+  router.post("/:conversationId/read", async (req, res) => {
+    try {
+      const me = String(req.userId || "").trim();
+      const conversationId = String(req.params.conversationId || "").trim();
+
+      if (!isValidId(me))
+        return res.status(401).json({ error: "Invalid token" });
+      if (!isValidId(conversationId))
+        return res.status(400).json({ error: "Invalid conversationId" });
+
+      const conv = await Conversation.findById(conversationId)
+        .select("participants")
+        .lean();
+      if (!conv)
+        return res.status(404).json({ error: "Conversation not found" });
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return res.status(403).json({ error: "Not allowed" });
+
+      const meObj = new mongoose.Types.ObjectId(me);
+
+      const result = await Message.updateMany(
+        {
+          conversationId: new mongoose.Types.ObjectId(conversationId),
+          senderId: { $ne: meObj },
+          readBy: { $nin: [meObj] },
+        },
+        { $addToSet: { readBy: meObj } }
+      );
+
+      const modified =
+        Number(result?.modifiedCount ?? result?.nModified ?? 0) || 0;
+
+      return res.json({ ok: true, modified });
+    } catch (err) {
+      console.error("CHAT READ ERROR:", err?.message || err);
+      return res.status(500).json({ error: "Failed to mark as read" });
     }
   });
 

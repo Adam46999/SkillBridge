@@ -7,6 +7,11 @@ type Props = {
   title: string; // peerName
   onBack: () => void;
 
+  // ✅ NEW (optional)
+  onPressTitle?: () => void; // open profile
+  onPressAvatar?: () => void; // open profile
+  onRequestSession?: () => void; // request session CTA
+
   // realtime UI
   conn: ConnStatus;
   peerTyping: boolean;
@@ -38,6 +43,9 @@ function formatLastSeen(iso: string) {
 export default function ChatHeader({
   title,
   onBack,
+  onPressTitle,
+  onPressAvatar,
+  onRequestSession,
   conn,
   peerTyping,
   peerOnline,
@@ -69,6 +77,9 @@ export default function ChatHeader({
     return "#64748B";
   }, [conn, peerOnline, peerTyping]);
 
+  const canOpenProfile = !!onPressTitle || !!onPressAvatar;
+  const canRequest = !!onRequestSession;
+
   return (
     <View style={styles.header}>
       <Pressable
@@ -85,11 +96,31 @@ export default function ChatHeader({
       </Pressable>
 
       <View style={styles.center}>
-        <View style={styles.avatar}>
+        <Pressable
+          onPress={onPressAvatar}
+          disabled={!onPressAvatar}
+          accessibilityRole={onPressAvatar ? "button" : undefined}
+          accessibilityLabel={onPressAvatar ? "Open profile" : undefined}
+          style={({ pressed }) => [
+            styles.avatar,
+            pressed && onPressAvatar ? { opacity: 0.92 } : null,
+          ]}
+          hitSlop={10}
+        >
           <Text style={styles.avatarText}>{avatar}</Text>
-        </View>
+        </Pressable>
 
-        <View style={{ flex: 1 }}>
+        <Pressable
+          onPress={onPressTitle}
+          disabled={!onPressTitle}
+          accessibilityRole={onPressTitle ? "button" : undefined}
+          accessibilityLabel={onPressTitle ? "Open profile" : undefined}
+          style={({ pressed }) => [
+            { flex: 1 },
+            pressed && onPressTitle ? { opacity: 0.92 } : null,
+          ]}
+          hitSlop={10}
+        >
           <Text
             style={styles.title}
             numberOfLines={1}
@@ -104,11 +135,28 @@ export default function ChatHeader({
               {subtitle}
             </Text>
           </View>
-        </View>
+        </Pressable>
       </View>
 
-      {/* right spacer (future actions: call/info) */}
-      <View style={{ width: 44 }} />
+      <View style={styles.right}>
+        {canRequest ? (
+          <Pressable
+            onPress={onRequestSession}
+            accessibilityRole="button"
+            accessibilityLabel="Request session"
+            style={({ pressed }) => [
+              styles.reqBtn,
+              pressed ? { opacity: 0.92 } : null,
+            ]}
+            hitSlop={10}
+          >
+            <Text style={styles.reqText}>{isRTL ? "طلب جلسة" : "Session"}</Text>
+          </Pressable>
+        ) : (
+          // keep layout stable
+          <View style={{ width: 56 }} />
+        )}
+      </View>
     </View>
   );
 }
@@ -186,5 +234,26 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
     fontWeight: "800",
     fontSize: 11,
+  },
+
+  right: {
+    width: 70,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  reqBtn: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "#111827",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reqText: {
+    color: "#E5E7EB",
+    fontWeight: "900",
+    fontSize: 12,
   },
 });

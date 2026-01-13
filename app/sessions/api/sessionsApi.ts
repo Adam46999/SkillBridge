@@ -5,138 +5,102 @@ export type SessionStatus =
   | "requested"
   | "accepted"
   | "rejected"
-  | "cancelled" // UI/internal
+  | "cancelled"
   | "completed";
+
+export type PickedUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  points?: number;
+  xp?: number;
+  streak?: number;
+  avgRating?: number;
+  ratingCount?: number;
+};
 
 export type SessionDTO = {
   _id: string;
+
+  mentorId: any;
+  learnerId: any;
+
+  mentor?: PickedUser | null;
+  learner?: PickedUser | null;
+
+  skill: string;
+  level: string;
+  scheduledAt: string;
+  status: SessionStatus;
+
+  note?: string;
+
+  joinedAt?: string | null;
+  joinedBy?: any[];
+
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  cancelledBy?: any | null;
+
+  deleteNotice?: string | null;
+
+  hiddenFor?: any[];
+
+  rating?: number | null;
+  feedback?: string;
+};
+
+async function apiFetch<T>(
+  path: string,
+  token: string,
+  init?: RequestInit
+): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers || {}),
+    },
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (json as any)?.error || "Request failed";
+    const err: any = new Error(msg);
+    err.status = res.status;
+    err.body = json;
+    throw err;
+  }
+  return json as T;
+}
+
+export async function listMySessions(token: string): Promise<SessionDTO[]> {
+  const r = await apiFetch<{ sessions: SessionDTO[] }>(
+    "/api/sessions/mine",
+    token
+  );
+  return r.sessions || [];
+}
+export type RequestSessionPayload = {
   mentorId: string;
-  learnerId: string;
   skill: string;
   level: string;
   scheduledAt: string; // ISO
-  status: SessionStatus;
   note?: string;
-  rating?: number | null;
-  feedback?: string;
-  createdAt?: string;
-  updatedAt?: string;
 };
-
-async function handle(res: Response) {
-  const text = await res.text();
-  let data: any = null;
-
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = text;
-  }
-
-  if (!res.ok) {
-    const msg =
-      (data && (data.error || data.message)) ||
-      (typeof data === "string" && data) ||
-      `Request failed with status ${res.status}`;
-    throw new Error(msg);
-  }
-
-  return data;
-}
-
-async function fetchWithTimeout(url: string, options: RequestInit, ms = 12000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), ms);
-
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
-  } catch (e: any) {
-    if (e?.name === "AbortError") {
-      throw new Error("Request timed out. Check API_URL / server.");
-    }
-    throw e;
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-// ✅ UI -> API spelling (backend usually uses "canceled")
-function statusForApi(status: SessionStatus) {
-  return status; // ✅ no conversion
-}
-
-function statusFromApi(status: any): SessionStatus {
-  return status as SessionStatus; // ✅ no conversion
-}
-
-
-function normalizeSessionFromApi(s: any): SessionDTO {
-  return {
-    ...s,
-    status: statusFromApi(s?.status),
-  } as SessionDTO;
-}
-
-export async function listMySessions(
-  token: string,
-  params?: {
-    role?: "mentor" | "learner" | "any";
-    scope?: "upcoming" | "past" | "all";
-    statuses?: SessionStatus[];
-  }
-): Promise<SessionDTO[]> {
-  const q = new URLSearchParams();
-  if (params?.role) q.set("role", params.role);
-  if (params?.scope) q.set("scope", params.scope);
-  if (params?.statuses?.length) {
-    q.set("statuses", params.statuses.map(statusForApi).join(","));
-  }
-
-  const url = `${API_URL}/api/sessions/mine${
-    q.toString() ? `?${q.toString()}` : ""
-  }`;
-
-  const res = await fetchWithTimeout(
-    url,
-    {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    },
-    12000
-  );
-
-  const data = await handle(res);
-  const arr = Array.isArray(data?.sessions) ? data.sessions : Array.isArray(data) ? data : [];
-  return arr.map(normalizeSessionFromApi);
-}
 
 export async function requestSession(
   token: string,
-  body: {
-    mentorId: string;
-    skill: string;
-    level?: string;
-    scheduledAt: string;
-    note?: string;
-  }
+  payload: RequestSessionPayload
 ): Promise<SessionDTO> {
-  const res = await fetchWithTimeout(
-    `${API_URL}/api/sessions`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    },
-    12000
+  const r = await apiFetch<{ session: SessionDTO }>(
+    "/api/sessions",
+    token,
+    { method: "POST", body: JSON.stringify(payload) }
   );
-
-  const data = await handle(res);
-  const s = data?.session ?? data;
-  return normalizeSessionFromApi(s);
+  return r.session;
 }
 
 export async function updateSessionStatus(
@@ -144,46 +108,43 @@ export async function updateSessionStatus(
   sessionId: string,
   status: SessionStatus
 ): Promise<SessionDTO> {
-  // ✅ log صح (جوا الفنكشن) لو بدك
-  // console.log("[sessions] update status", sessionId, "=>", status);
-
-  const res = await fetchWithTimeout(
-    `${API_URL}/api/sessions/${sessionId}/status`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ status: statusForApi(status) }),
-    },
-    12000
+  const r = await apiFetch<{ session: SessionDTO }>(
+    `/api/sessions/${sessionId}/status`,
+    token,
+    { method: "PATCH", body: JSON.stringify({ status }) }
   );
+  return r.session;
+}
 
-  const data = await handle(res);
-  const s = data?.session ?? data;
-  return normalizeSessionFromApi(s);
+export async function joinSession(
+  token: string,
+  sessionId: string
+): Promise<SessionDTO> {
+  const r = await apiFetch<{ session: SessionDTO }>(
+    `/api/sessions/${sessionId}/join`,
+    token,
+    { method: "POST" }
+  );
+  return r.session;
 }
 
 export async function rateSession(
   token: string,
   sessionId: string,
-  body: { rating: number; feedback?: string }
-): Promise<SessionDTO> {
-  const res = await fetchWithTimeout(
-    `${API_URL}/api/sessions/${sessionId}/rate`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    },
-    12000
-  );
+  payload: { rating: number; feedback?: string }
+): Promise<{ ok: boolean; rating: number | null }> {
+  return apiFetch(`/api/sessions/${sessionId}/rate`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
 
-  const data = await handle(res);
-  const s = data?.session ?? data;
-  return normalizeSessionFromApi(s);
+// ✅ NEW: Smart Delete
+export async function deleteSessionSmart(
+  token: string,
+  sessionId: string
+): Promise<{ ok: boolean; action: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/delete`, token, {
+    method: "POST",
+  });
 }

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -42,7 +42,6 @@ export default function SessionsScreen() {
   const [scope, setScope] = useState<Scope>("upcoming");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
-
   const {
     token,
     currentUserId,
@@ -52,17 +51,34 @@ export default function SessionsScreen() {
     refreshing,
     errorText,
     load,
-    onRefresh,
+    refresh,
   } = useSessionsData(scope);
 
-  // 1) search filter (NEW ✅)
+  // ✅ NEW: local mirror so delete removes instantly from UI without waiting refetch
+  const [localSessions, setLocalSessions] = useState<SessionDTO[]>([]);
+
+  useEffect(() => {
+    setLocalSessions(Array.isArray(sessions) ? sessions : []);
+  }, [sessions]);
+
+  // ✅ NEW: remove from UI immediately (called after delete success OR optimistic if you want)
+  const onDeletedLocal = useCallback((sessionId: string) => {
+    setLocalSessions((prev) => prev.filter((s) => s._id !== sessionId));
+  }, []);
+
+  // ✅ keep your existing "reload list" behavior as-is
+  const onChanged = useCallback(async () => {
+    await load({ silent: true, listOnly: true });
+  }, [load]);
+
+  // 1) search filter (same logic, but uses localSessions)
   const searchedSessions = useMemo(() => {
     const q = query.trim();
-    if (!q) return sessions;
-    return (Array.isArray(sessions) ? sessions : []).filter((s) =>
+    if (!q) return localSessions;
+    return (Array.isArray(localSessions) ? localSessions : []).filter((s) =>
       sessionMatchesQuery(s, q)
     );
-  }, [sessions, query]);
+  }, [localSessions, query]);
 
   // 2) status filter (existing ✅)
   const filteredSessions = useMemo(
@@ -80,15 +96,15 @@ export default function SessionsScreen() {
     () => !loading && !errorText && filteredSessions.length === 0,
     [loading, errorText, filteredSessions.length]
   );
+  const safeUserId =
+    currentUserId && String(currentUserId).trim() ? currentUserId : null;
 
-  const onChanged = useCallback(async () => {
-    await load({ silent: true, listOnly: true });
-  }, [load]);
-
+  // ✅ pass onDeletedLocal down (NO other behavior changed)
   const renderRow = useRowRenderer({
     token,
-    currentUserId,
+    currentUserId: safeUserId,
     onChanged,
+    onDeletedLocal,
   });
 
   const keyExtractor = useCallback((r: Row) => r.key, []);
@@ -106,6 +122,23 @@ export default function SessionsScreen() {
         <ActivityIndicator size="large" />
         <Text style={{ color: "#9CA3AF", marginTop: 12 }}>
           Loading sessions…
+        </Text>
+      </View>
+    );
+  }
+  if (token && !safeUserId) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#020617",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator size="large" />
+        <Text style={{ color: "#9CA3AF", marginTop: 12 }}>
+          Loading profile…
         </Text>
       </View>
     );
@@ -132,6 +165,7 @@ export default function SessionsScreen() {
           setScope={setScope}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
+          // ✅ keep prop same type: pass original sessions (not critical)
           sessions={sessions}
           filteredCount={filteredSessions.length}
           loadingList={loadingList}
@@ -139,9 +173,7 @@ export default function SessionsScreen() {
           onRetry={() => load({ silent: true, listOnly: true })}
           query={query}
           setQuery={setQuery}
-          // ✅ safest: route موجود عندك حسب الكود السابق
           onFindMentor={() => router.push("/find-mentor" as any)}
-          // ✅ خليها اختياري… إذا عندك روت جاهز مررّه
           // onRequestSession={() => router.push("/sessions/request" as any)}
         />
 
@@ -208,7 +240,7 @@ export default function SessionsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={refresh}
             tintColor="#F97316"
           />
         }
