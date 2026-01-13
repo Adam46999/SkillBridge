@@ -1,9 +1,11 @@
 // app/sessions/components/SessionCard.tsx
+import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -11,55 +13,228 @@ import {
 } from "react-native";
 
 import type { SessionDTO, SessionStatus } from "../api/sessionsApi";
-import { rateSession, updateSessionStatus } from "../api/sessionsApi";
+import {
+  deleteSessionSmart,
+  joinSession,
+  rateSession,
+  updateSessionStatus,
+} from "../api/sessionsApi";
+
 import { formatSessionDateTime, statusBadge } from "../utils/formatSession";
 
-type Props = {
-  session: SessionDTO;
-  token: string | null;
-  currentUserId: string | null;
-  onChanged: () => Promise<void>;
-};
-
-function clampInt(v: number, min: number, max: number) {
-  const n = Math.floor(v);
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, n));
+// ---------------- helpers (unchanged style) ----------------
+function toMs(iso?: string | null) {
+  if (!iso) return null;
+  const t = new Date(String(iso)).getTime();
+  return Number.isFinite(t) ? t : null;
 }
 
+function isTimeReached(iso?: string | null) {
+  const t = toMs(iso);
+  if (!t) return false;
+  return t <= Date.now();
+}
+
+function minutesUntil(iso?: string | null) {
+  const t = toMs(iso);
+  if (!t) return null;
+  const diff = t - Date.now();
+  return Math.floor(diff / 60000);
+}
+
+function minutesSince(iso?: string | null) {
+  const t = toMs(iso);
+  if (!t) return null;
+  const diff = Date.now() - t;
+  return Math.floor(diff / 60000);
+}
+
+function formatAgo(iso?: string | null) {
+  const since = minutesSince(iso);
+  if (since === null) return "—";
+  if (since > 60) return `${Math.round(since / 60)}h ago`;
+  return `${since}m ago`;
+}
+
+// mirror backend RULES (UI only)
+const RULES = {
+  JOIN_EARLY_MIN: 30,
+  JOIN_LATE_MIN: 180,
+  COMPLETE_MAX_DELAY_MIN: 24 * 60,
+};
+
+function canJoinNow(iso?: string | null) {
+  const until = minutesUntil(iso);
+  if (until === null) return { ok: false, reason: "Invalid time" };
+
+  if (until > 0 && until <= RULES.JOIN_EARLY_MIN) return { ok: true };
+  if (until <= 0) {
+    const since = minutesSince(iso);
+    if (since !== null && since <= RULES.JOIN_LATE_MIN) return { ok: true };
+    return { ok: false, reason: "Join window expired" };
+  }
+  return { ok: false, reason: "Too early" };
+}
+
+function canCompleteNow(iso?: string | null) {
+  if (!isTimeReached(iso))
+    return { ok: false, reason: "Too early to complete" };
+  const since = minutesSince(iso);
+  if (since === null) return { ok: false, reason: "Invalid time" };
+  if (since > RULES.COMPLETE_MAX_DELAY_MIN)
+    return { ok: false, reason: "Completion window expired" };
+  return { ok: true };
+}
+function getId(v: any) {
+  if (!v) return "";
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number") return String(v);
+
+  if (typeof v === "object") {
+    // support ObjectId-like / populated docs
+    const id = v._id || v.id;
+    if (id) return String(id).trim();
+  }
+
+  return "";
+}
+
+// ---------------- UI atoms ----------------
+function ActionBtn({
+  label,
+  kind,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  kind: "primary" | "danger" | "neutral";
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const bg =
+    kind === "primary" ? "#10B981" : kind === "danger" ? "#EF4444" : "#334155";
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!!disabled}
+      style={{
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        backgroundColor: disabled ? "#1F2937" : bg,
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Badge({ text }: { text: string }) {
+  return (
+    <View
+      style={{
+        alignSelf: "flex-start",
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: "#0F172A",
+        borderWidth: 1,
+        borderColor: "#1F2937",
+      }}
+    >
+      <Text style={{ color: "#CBD5E1", fontWeight: "700" }}>{text}</Text>
+    </View>
+  );
+}
+
+// ---------------- Component ----------------
 export default function SessionCard({
   session,
   token,
   currentUserId,
   onChanged,
-}: Props) {
+  onDeletedLocal, // ✅ NEW
+}: {
+  session: SessionDTO;
+  token: string | null;
+  currentUserId: string | null;
+  onChanged: () => Promise<void> | void;
+
+  // ✅ NEW
+  onDeletedLocal?: (sessionId: string) => void;
+}) {
+  const router = useRouter();
+
   const [busy, setBusy] = useState(false);
 
   const [rateOpen, setRateOpen] = useState(false);
-  const [rating, setRating] = useState<number>(5);
-  const [feedback, setFeedback] = useState<string>("");
+  const [rateValue, setRateValue] = useState("5");
+  const [rateFeedback, setRateFeedback] = useState("");
 
-  const badge = useMemo(() => statusBadge(session.status), [session.status]);
-  const when = useMemo(
-    () => formatSessionDateTime(session.scheduledAt),
+  const timeReached = useMemo(
+    () => isTimeReached(session.scheduledAt),
     [session.scheduledAt]
   );
 
-  const isMentor = !!currentUserId && currentUserId === session.mentorId;
-  const isLearner = !!currentUserId && currentUserId === session.learnerId;
+  const joinCheck = useMemo(
+    () => canJoinNow(session.scheduledAt),
+    [session.scheduledAt]
+  );
+  const completeCheck = useMemo(
+    () => canCompleteNow(session.scheduledAt),
+    [session.scheduledAt]
+  );
 
-  // ✅ Rules (محترمة وواقعية)
-  const canAcceptReject = isMentor && session.status === "requested";
+  const myId = getId(currentUserId);
+
+  // mentorId / learnerId ممكن يجوا كـ string أو object (populated) أو ObjectId
+  const mentorId =
+    getId((session as any).mentorId) || getId((session as any).mentor);
+  const learnerId =
+    getId((session as any).learnerId) || getId((session as any).learner);
+
+  console.log("DBG", { myId, mentorId, learnerId, status: session.status });
+
+  const isMentor = !!myId && mentorId === myId;
+  const isLearner = !!myId && learnerId === myId;
+
+  const joinedBy = Array.isArray((session as any).joinedBy)
+    ? (session as any).joinedBy.map((x: any) => getId(x)).filter(Boolean)
+    : [];
+
+  const mentorJoined = !!mentorId && joinedBy.includes(mentorId);
+  const learnerJoined = !!learnerId && joinedBy.includes(learnerId);
+
+  // ✅ Rules (UI mirrors backend)
+  const canAcceptReject =
+    isMentor && session.status === "requested" && !timeReached;
+
   const canCancel =
     (isMentor || isLearner) &&
     (session.status === "requested" || session.status === "accepted");
-  const canComplete = isMentor && session.status === "accepted";
 
-  // ✅ Rating يظهر بعد completion + غير مكرر
+  const canJoin =
+    (isMentor || isLearner) && session.status === "accepted" && joinCheck.ok;
+
+  const canComplete =
+    isMentor &&
+    session.status === "accepted" &&
+    completeCheck.ok &&
+    mentorJoined;
+
   const canRate =
     (isMentor || isLearner) &&
     session.status === "completed" &&
-    !session.rating;
+    !(session as any).rating;
+
+  // ✅ Delete = Hide (only for final statuses)
+  const canHide =
+    (isMentor || isLearner) &&
+    (session.status === "rejected" ||
+      session.status === "cancelled" ||
+      session.status === "completed");
 
   const setStatus = async (next: SessionStatus) => {
     if (!token) {
@@ -67,338 +242,363 @@ export default function SessionCard({
       return;
     }
 
-    const pretty = next.charAt(0).toUpperCase() + next.slice(1).toLowerCase();
+    const title = "Confirm action";
+    const body =
+      next === "accepted"
+        ? "This will accept the learner request."
+        : next === "cancelled"
+        ? "This will cancel the session for both sides."
+        : next === "rejected"
+        ? "This will reject the learner request."
+        : next === "completed"
+        ? "This will mark the session as completed."
+        : `Are you sure you want to set this session to "${next}"?`;
 
-    Alert.alert(
-      `${pretty}?`,
-      `Are you sure you want to set this session to "${next}"?`,
-      [
-        { text: "No", style: "cancel" },
-        {
-          text: "Yes",
-          style: "default",
-          onPress: async () => {
-            try {
-              setBusy(true);
-              await updateSessionStatus(token, session._id, next);
-              await onChanged();
-            } catch (e: any) {
-              Alert.alert("Update failed", e?.message || "Please try again.");
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ]
-    );
+    if (Platform.OS === "web") {
+      // @ts-ignore
+      const ok = window.confirm(`${title}\n\n${body}`);
+      if (!ok) return;
+    } else {
+      const ok = await new Promise<boolean>((resolve) => {
+        Alert.alert(title, body, [
+          { text: "No", style: "cancel", onPress: () => resolve(false) },
+          { text: "Yes", style: "destructive", onPress: () => resolve(true) },
+        ]);
+      });
+      if (!ok) return;
+    }
+
+    try {
+      setBusy(true);
+      await updateSessionStatus(token, session._id, next);
+      await onChanged();
+    } catch (e: any) {
+      Alert.alert("Failed", e?.message || "Action failed");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const submitRating = async () => {
-    if (!token) {
-      Alert.alert("Not logged in", "Please login again.");
+  const doJoin = async () => {
+    if (!token) return Alert.alert("Not logged in", "Please login again.");
+    try {
+      setBusy(true);
+      await joinSession(token, session._id);
+      await onChanged();
+    } catch (e: any) {
+      Alert.alert("Join failed", e?.message || "Join failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doSmartDelete = async () => {
+    if (!token) return Alert.alert("Not logged in", "Please login again.");
+
+    const title = "Delete session";
+
+    const body =
+      session.status === "accepted"
+        ? "Deleting an accepted session will cancel it for both users. The other user will see a notice."
+        : session.status === "requested"
+        ? isLearner
+          ? "This will cancel your request and remove it from your list."
+          : "This will reject the request and remove it from your list."
+        : "This will remove this session from your list.";
+
+    if (Platform.OS === "web") {
+      // @ts-ignore
+      const ok = window.confirm(`${title}\n\n${body}`);
+      if (!ok) return;
+    } else {
+      const ok = await new Promise<boolean>((resolve) => {
+        Alert.alert(title, body, [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => resolve(true),
+          },
+        ]);
+      });
+      if (!ok) return;
+    }
+    try {
+      setBusy(true);
+      await deleteSessionSmart(token, session._id);
+
+      // ✅ NEW: يخفيها فوراً من قدامك
+      onDeletedLocal?.(session._id);
+
+      // ✅ خليه عشان يعمل sync بعدين
+      await onChanged();
+    } catch (e: any) {
+      Alert.alert("Failed", e?.message || "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRate = async () => {
+    if (!token) return Alert.alert("Not logged in", "Please login again.");
+    const n = Number(rateValue);
+    if (!Number.isFinite(n) || n < 1 || n > 5) {
+      Alert.alert("Invalid rating", "Please choose 1 to 5.");
       return;
     }
 
     try {
       setBusy(true);
       await rateSession(token, session._id, {
-        rating: clampInt(rating, 1, 5),
-        feedback: feedback.trim(),
+        rating: n,
+        feedback: rateFeedback,
       });
       setRateOpen(false);
-      setFeedback("");
-      setRating(5);
       await onChanged();
-      Alert.alert("Thanks ✅", "Your rating was submitted.");
     } catch (e: any) {
-      Alert.alert("Rating failed", e?.message || "Please try again.");
+      Alert.alert("Failed", e?.message || "Rating failed");
     } finally {
       setBusy(false);
     }
   };
 
+  const title = `${session.skill} • ${session.level || "Not specified"}`;
+  const timeLine = formatSessionDateTime(session.scheduledAt);
+  const badge = statusBadge(session.status);
+  const badgeText = typeof badge === "string" ? badge : badge.label;
+  const otherName = isMentor
+    ? (session as any)?.learner?.fullName ||
+      (session as any)?.learner?.email ||
+      "Learner"
+    : isLearner
+    ? (session as any)?.mentor?.fullName ||
+      (session as any)?.mentor?.email ||
+      "Mentor"
+    : (session as any)?.mentor?.fullName ||
+      (session as any)?.mentor?.email ||
+      (session as any)?.learner?.fullName ||
+      (session as any)?.learner?.email ||
+      "User";
+
+  const cancelNotice = useMemo(() => {
+    const st = String(session.status || "").toLowerCase();
+    if (st !== "cancelled" && st !== "rejected") return "";
+
+    const dn = String((session as any)?.deleteNotice || "").trim();
+    if (dn) return dn;
+
+    const cr = String((session as any)?.cancelReason || "").trim();
+    if (cr === "expired_request") return "This request expired automatically.";
+    if (cr === "missed") return "Session time passed and was cancelled.";
+    if (cr === "late_cancel") return "Cancelled late.";
+    if (cr) return "Cancelled.";
+
+    if (st === "rejected") return "This request was rejected.";
+    return "Cancelled.";
+  }, [
+    session.status,
+    (session as any)?.deleteNotice,
+    (session as any)?.cancelReason,
+  ]);
+
   return (
     <View
       style={{
-        backgroundColor: "#0B1120",
+        backgroundColor: "#0B1220",
+        borderRadius: 16,
+        padding: 14,
         borderWidth: 1,
-        borderColor: "#1E293B",
-        borderRadius: 14,
-        padding: 12,
+        borderColor: "#1F2937",
+        gap: 10,
       }}
     >
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <Text style={{ color: "#F9FAFB", fontWeight: "900", fontSize: 14 }}>
-          {session.skill} {session.level ? `· ${session.level}` : ""}
-        </Text>
-
-        <View
-          style={{
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderRadius: 999,
-            backgroundColor: badge.bg,
-            borderWidth: 1,
-            borderColor: badge.border,
-          }}
-        >
-          <Text style={{ color: badge.text, fontWeight: "900", fontSize: 12 }}>
-            {badge.label}
+      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={{ color: "#E2E8F0", fontSize: 16, fontWeight: "800" }}>
+            {title}
+          </Text>
+          <Text style={{ color: "#94A3B8", marginTop: 4 }}>{timeLine}</Text>
+          <Text style={{ color: "#64748B", marginTop: 4 }}>
+            With: {otherName}
+            {!!cancelNotice && (
+              <Text
+                style={{ color: "#FBBF24", marginTop: 6, fontWeight: "700" }}
+              >
+                {cancelNotice}
+              </Text>
+            )}
           </Text>
         </View>
+
+        <Badge text={badgeText} />
       </View>
 
-      <Text style={{ color: "#94A3B8", marginTop: 8, fontSize: 12 }}>
-        Scheduled: {when}
-      </Text>
-
-      {!!session.note && (
-        <Text style={{ color: "#CBD5E1", marginTop: 6, fontSize: 12 }}>
-          Note: {session.note}
-        </Text>
-      )}
-
-      {/* Rating summary (if already rated) */}
-      {session.status === "completed" && session.rating ? (
-        <View style={{ marginTop: 10 }}>
-          <Text style={{ color: "#FDE68A", fontWeight: "900", fontSize: 12 }}>
-            Rated: {"⭐".repeat(Math.max(1, Math.min(5, session.rating)))} (
-            {session.rating}/5)
-          </Text>
-          {!!session.feedback && (
-            <Text style={{ color: "#94A3B8", marginTop: 4, fontSize: 12 }}>
-              Feedback: {session.feedback}
-            </Text>
-          )}
-        </View>
-      ) : null}
-
-      {/* Actions */}
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          gap: 8,
-          marginTop: 12,
-        }}
-      >
-        {busy ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <ActivityIndicator />
-            <Text style={{ color: "#94A3B8", fontWeight: "900" }}>
-              Working…
-            </Text>
-          </View>
-        ) : (
+      <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+        {canAcceptReject && (
           <>
-            {canAcceptReject && (
-              <>
-                <ActionBtn
-                  label="Accept"
-                  kind="good"
-                  onPress={() => setStatus("accepted")}
-                />
-                <ActionBtn
-                  label="Reject"
-                  kind="bad"
-                  onPress={() => setStatus("rejected")}
-                />
-              </>
-            )}
-
-            {canCancel && (
-              <ActionBtn
-                label="Cancel"
-                kind="neutral"
-                onPress={() => setStatus("cancelled")}
-              />
-            )}
-
-            {canComplete && (
-              <ActionBtn
-                label="Complete"
-                kind="primary"
-                onPress={() => setStatus("completed")}
-              />
-            )}
-
-            {canRate && (
-              <ActionBtn
-                label="Rate session"
-                kind="primary"
-                onPress={() => setRateOpen(true)}
-              />
-            )}
+            <ActionBtn
+              label="Accept"
+              kind="primary"
+              onPress={() => setStatus("accepted")}
+              disabled={busy}
+            />
+            <ActionBtn
+              label="Reject"
+              kind="danger"
+              onPress={() => setStatus("rejected")}
+              disabled={busy}
+            />
           </>
         )}
+
+        {canCancel && (
+          <ActionBtn
+            label="Cancel"
+            kind="danger"
+            onPress={() => setStatus("cancelled")}
+            disabled={busy}
+          />
+        )}
+
+        {canJoin && (
+          <ActionBtn
+            label="Join"
+            kind="primary"
+            onPress={doJoin}
+            disabled={busy}
+          />
+        )}
+
+        {session.status === "accepted" && !canJoin && (
+          <ActionBtn
+            label={joinCheck.ok ? "Join" : "Join (not available)"}
+            kind="neutral"
+            onPress={() => {}}
+            disabled={true}
+          />
+        )}
+
+        {canComplete && (
+          <ActionBtn
+            label="Complete"
+            kind="primary"
+            onPress={() => setStatus("completed")}
+            disabled={busy}
+          />
+        )}
+
+        {session.status === "accepted" && !canComplete && timeReached && (
+          <ActionBtn
+            label={
+              mentorJoined ? "Complete (blocked)" : "Complete (join first)"
+            }
+            kind="neutral"
+            onPress={() => {}}
+            disabled={true}
+          />
+        )}
+
+        {canRate && (
+          <ActionBtn
+            label="Rate"
+            kind="primary"
+            onPress={() => setRateOpen(true)}
+            disabled={busy}
+          />
+        )}
+
+        <ActionBtn
+          label="Delete"
+          kind="neutral"
+          onPress={doSmartDelete}
+          disabled={busy}
+        />
+
+        {busy && <ActivityIndicator />}
       </View>
 
-      {/* Rate Modal */}
       <Modal visible={rateOpen} transparent animationType="fade">
-        <View
+        <Pressable
+          onPress={() => setRateOpen(false)}
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.55)",
+            backgroundColor: "rgba(0,0,0,0.45)",
             justifyContent: "center",
-            padding: 16,
+            padding: 18,
           }}
         >
-          <View
+          <Pressable
+            onPress={() => {}}
             style={{
-              backgroundColor: "#0B1120",
+              backgroundColor: "#0B1220",
               borderRadius: 16,
+              padding: 16,
               borderWidth: 1,
-              borderColor: "#1E293B",
-              padding: 14,
+              borderColor: "#1F2937",
+              gap: 12,
             }}
           >
-            <Text style={{ color: "#E5E7EB", fontWeight: "900", fontSize: 16 }}>
-              Rate this session
+            <Text style={{ color: "#E2E8F0", fontWeight: "800", fontSize: 16 }}>
+              Rate session
             </Text>
 
-            <Text style={{ color: "#94A3B8", marginTop: 6, fontSize: 12 }}>
-              Give a quick rating and optional feedback.
+            <Text style={{ color: "#94A3B8" }}>
+              Choose 1–5 and optional feedback.
             </Text>
-
-            {/* Stars row */}
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              {[1, 2, 3, 4, 5].map((n) => {
-                const active = n <= rating;
-                return (
-                  <Pressable
-                    key={n}
-                    onPress={() => setRating(n)}
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 10,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: active ? "#F97316" : "#334155",
-                      backgroundColor: active ? "#111827" : "#020617",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: active ? "#FED7AA" : "#94A3B8",
-                        fontWeight: "900",
-                      }}
-                    >
-                      ⭐ {n}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
 
             <TextInput
-              value={feedback}
-              onChangeText={setFeedback}
-              placeholder="Optional feedback…"
+              value={rateValue}
+              onChangeText={setRateValue}
+              keyboardType="numeric"
+              placeholder="5"
               placeholderTextColor="#64748B"
-              multiline
               style={{
-                marginTop: 12,
-                minHeight: 90,
-                borderRadius: 12,
                 borderWidth: 1,
                 borderColor: "#1F2937",
-                backgroundColor: "#020617",
-                color: "#E5E7EB",
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                textAlignVertical: "top",
-                fontWeight: "700",
+                borderRadius: 12,
+                padding: 10,
+                color: "#E2E8F0",
               }}
             />
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-              <Pressable
+            <TextInput
+              value={rateFeedback}
+              onChangeText={setRateFeedback}
+              placeholder="Feedback (optional)"
+              placeholderTextColor="#64748B"
+              style={{
+                borderWidth: 1,
+                borderColor: "#1F2937",
+                borderRadius: 12,
+                padding: 10,
+                color: "#E2E8F0",
+                minHeight: 80,
+              }}
+              multiline
+            />
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <ActionBtn
+                label="Cancel"
+                kind="neutral"
                 onPress={() => setRateOpen(false)}
-                style={{
-                  flex: 1,
-                  borderRadius: 999,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: "#334155",
-                  backgroundColor: "#020617",
-                }}
-              >
-                <Text style={{ color: "#E5E7EB", fontWeight: "900" }}>
-                  Cancel
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={submitRating}
-                style={{
-                  flex: 1,
-                  borderRadius: 999,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: "#FB923C",
-                  backgroundColor: "#F97316",
-                }}
-              >
-                <Text style={{ color: "#111827", fontWeight: "900" }}>
-                  Submit
-                </Text>
-              </Pressable>
+                disabled={busy}
+              />
+              <ActionBtn
+                label="Submit"
+                kind="primary"
+                onPress={submitRate}
+                disabled={busy}
+              />
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
-    </View>
-  );
-}
 
-function ActionBtn({
-  label,
-  onPress,
-  kind,
-}: {
-  label: string;
-  onPress: () => void;
-  kind: "primary" | "good" | "bad" | "neutral";
-}) {
-  const styleByKind =
-    kind === "good"
-      ? { bg: "#22C55E", text: "#022C22", border: "#16A34A" }
-      : kind === "bad"
-      ? { bg: "#B91C1C", text: "#FEE2E2", border: "#EF4444" }
-      : kind === "primary"
-      ? { bg: "#F97316", text: "#111827", border: "#FB923C" }
-      : { bg: "#020617", text: "#E5E7EB", border: "#334155" };
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        {
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          borderRadius: 999,
-          borderWidth: 1,
-          borderColor: styleByKind.border,
-          backgroundColor: styleByKind.bg,
-        },
-        pressed ? { opacity: 0.9 } : null,
-      ]}
-    >
-      <Text
-        style={{ color: styleByKind.text, fontWeight: "900", fontSize: 12 }}
-      >
-        {label}
+      <Text style={{ color: "#475569" }}>
+        Updated{" "}
+        {formatAgo((session as any)?.updatedAt || (session as any)?.createdAt)}
       </Text>
-    </Pressable>
+    </View>
   );
 }

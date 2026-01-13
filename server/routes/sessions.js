@@ -2,18 +2,97 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const Session = require("../models/Session");
-const User = require("../models/User");
+
+const {
+  getBalance,
+  addPoints,
+  deductPoints,
+} = require("../services/pointsService");
+const { POINTS, CANCEL, REASONS } = require("../services/gamificationRules");
+const { rateSession } = require("../services/ratingsService");
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(String(id));
 }
 
+function normalizeStatus(raw) {
+  const s = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (s === "canceled") return "cancelled";
+  return s;
+}
+
+function toMs(v) {
+  const t = new Date(String(v)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function isTimeReached(when) {
+  const t = toMs(when);
+  return !!t && t <= Date.now();
+}
+
+function minutesUntil(when) {
+  const t = toMs(when);
+  if (!t) return null;
+  return Math.floor((t - Date.now()) / 60000);
+}
+
+function minutesSince(when) {
+  const t = toMs(when);
+  if (!t) return null;
+  return Math.floor((Date.now() - t) / 60000);
+}
+
+function isLateCancel(scheduledAt) {
+  const mins = minutesUntil(scheduledAt);
+  if (mins === null) return false;
+  return mins >= 0 && mins <= Number(CANCEL?.LATE_WINDOW_MINUTES ?? 120);
+}
+
+const RULES = {
+  JOIN_EARLY_MIN: 30,
+  JOIN_LATE_MIN: 180,
+  COMPLETE_MAX_DELAY_MIN: 24 * 60,
+  ACCEPT_REJECT_BLOCK_AT_START: true,
+};
+
+function canJoinNow(sessionDoc) {
+  const until = minutesUntil(sessionDoc.scheduledAt);
+  if (until === null) return { ok: false, reason: "Invalid scheduledAt" };
+  if (until > 0 && until <= RULES.JOIN_EARLY_MIN) return { ok: true };
+  if (until <= 0) {
+    const since = minutesSince(sessionDoc.scheduledAt);
+    if (since !== null && since <= RULES.JOIN_LATE_MIN) return { ok: true };
+    return { ok: false, reason: "Join window expired" };
+  }
+  return { ok: false, reason: "Too early to join" };
+}
+
+function canCompleteNow(sessionDoc) {
+  if (!isTimeReached(sessionDoc.scheduledAt))
+    return { ok: false, reason: "Too early to complete" };
+  const since = minutesSince(sessionDoc.scheduledAt);
+  if (since === null) return { ok: false, reason: "Invalid scheduledAt" };
+  if (since > RULES.COMPLETE_MAX_DELAY_MIN)
+    return { ok: false, reason: "Completion window expired" };
+  return { ok: true };
+}
+
 function pickUser(u) {
   if (!u) return null;
+
+  // إذا u مجرد id (string أو ObjectId) -> رجّع DTO بسيط
+  if (typeof u === "string" || u instanceof mongoose.Types.ObjectId) {
+    return { id: String(u), fullName: "", email: "" };
+  }
+
+  // إذا u populated object
   return {
-    _id: u._id,
-    fullName: u.fullName,
-    email: u.email,
+    id: String(u._id),
+    fullName: u.fullName || "",
+    email: u.email || "",
     points: u.points,
     xp: u.xp,
     streak: u.streak,
@@ -22,102 +101,279 @@ function pickUser(u) {
   };
 }
 
+function idOf(v) {
+  if (!v) return null;
+  if (typeof v === "string") return v;
+  if (v._id) return String(v._id);
+  if (v.id) return String(v.id);
+  return String(v);
+}
+
+function toDTO(doc) {
+  const o = doc?.toObject ? doc.toObject() : doc;
+
+  const mentorIdStr = idOf(o.mentorId);
+  const learnerIdStr = idOf(o.learnerId);
+
+  return {
+    ...o,
+    mentorId: mentorIdStr,
+    learnerId: learnerIdStr,
+    mentor: pickUser(o.mentorId),
+    learner: pickUser(o.learnerId),
+  };
+}
+
 module.exports = function sessionsRouter(authMiddleware) {
   const router = express.Router();
 
-  // ===============================
-  // CREATE SESSION (learner requests)
-  // POST /api/sessions
-  // ===============================
-  router.post("/", authMiddleware, async (req, res) => {
-    try {
-      const learnerId = String(req.userId);
-      const { mentorId, skill, level, scheduledAt, note } = req.body || {};
+  async function populateSession(id) {
+    return Session.findById(id)
+      .populate(
+        "mentorId",
+        "fullName email points xp streak avgRating ratingCount"
+      )
+      .populate(
+        "learnerId",
+        "fullName email points xp streak avgRating ratingCount"
+      );
+  }
 
-      if (!mentorId || !skill || !scheduledAt) {
+  async function updateStatusInternal(req, res, statusRaw) {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      const nextStatus = normalizeStatus(statusRaw);
+
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+      const isMentor = mentorId === userId;
+      const isLearner = learnerId === userId;
+      if (!isMentor && !isLearner)
+        return res.status(403).json({ error: "Not allowed" });
+
+      // ✅ auto-cancel expired requested
+      if (s.status === "requested" && isTimeReached(s.scheduledAt)) {
+        s.status = "cancelled";
+        s.cancelledAt = s.cancelledAt || new Date();
+        s.cancelReason = s.cancelReason || "expired_request";
+        s.cancelledBy = s.cancelledBy || userId;
+        await s.save();
         return res.status(400).json({
-          error: "mentorId, skill, scheduledAt are required",
+          error: "Request expired and was cancelled automatically",
+          session: toDTO(await populateSession(s._id)),
         });
       }
 
-      if (!isValidObjectId(mentorId) || !isValidObjectId(learnerId)) {
-        return res.status(400).json({ error: "Invalid user id" });
+      // ✅ auto-cancel too old accepted
+      if (s.status === "accepted") {
+        const since = minutesSince(s.scheduledAt);
+        if (since !== null && since > RULES.COMPLETE_MAX_DELAY_MIN) {
+          s.status = "cancelled";
+          s.cancelledAt = s.cancelledAt || new Date();
+          s.cancelReason = s.cancelReason || "missed";
+          s.cancelledBy = s.cancelledBy || userId;
+          await s.save();
+          return res.status(400).json({
+            error: "Session too old and was cancelled automatically",
+            session: toDTO(await populateSession(s._id)),
+          });
+        }
       }
 
-      const when = new Date(scheduledAt);
-      if (Number.isNaN(when.getTime())) {
-        return res.status(400).json({ error: "Invalid scheduledAt date" });
+      const current = normalizeStatus(s.status);
+
+      // transition guard (minimal)
+      const ok =
+        (current === "requested" &&
+          (nextStatus === "accepted" ||
+            nextStatus === "rejected" ||
+            nextStatus === "cancelled")) ||
+        (current === "accepted" &&
+          (nextStatus === "cancelled" || nextStatus === "completed")) ||
+        (current !== "completed" && nextStatus === "cancelled");
+
+      if (!ok)
+        return res
+          .status(400)
+          .json({ error: `Invalid transition: ${current} -> ${nextStatus}` });
+
+      if ((nextStatus === "accepted" || nextStatus === "rejected") && !isMentor)
+        return res.status(403).json({ error: "Mentor only" });
+
+      if (
+        (nextStatus === "accepted" || nextStatus === "rejected") &&
+        RULES.ACCEPT_REJECT_BLOCK_AT_START &&
+        isTimeReached(s.scheduledAt)
+      )
+        return res
+          .status(400)
+          .json({ error: "You cannot accept/reject after time is reached" });
+
+      if (current === "requested" && nextStatus === "accepted") {
+        const cost = Number(POINTS?.BOOK_LEARN_SESSION_COST ?? 10);
+        const bal = await getBalance(learnerId);
+        if (bal < cost)
+          return res
+            .status(400)
+            .json({ error: "Not enough points", needed: cost, balance: bal });
       }
 
-      const doc = await Session.create({
-        mentorId,
-        learnerId,
-        skill: String(skill).trim(),
-        level: String(level || "Not specified").trim(),
+      const wasLate = nextStatus === "cancelled" && isLateCancel(s.scheduledAt);
+
+      // complete checks
+      if (nextStatus === "completed") {
+        if (!isMentor) return res.status(403).json({ error: "Mentor only" });
+        const chk = canCompleteNow(s);
+        if (!chk.ok) return res.status(400).json({ error: chk.reason });
+
+        const joinedBy = Array.isArray(s.joinedBy)
+          ? s.joinedBy.map(String)
+          : [];
+        if (!joinedBy.includes(mentorId))
+          return res
+            .status(400)
+            .json({ error: "Mentor must join before completing" });
+
+        s.completedAt = new Date();
+      }
+
+      if (nextStatus === "cancelled") {
+        s.cancelledAt = new Date();
+        s.cancelledBy = userId;
+        if (!s.cancelReason)
+          s.cancelReason = wasLate ? "late_cancel" : "cancelled";
+      }
+
+      s.status = nextStatus;
+      await s.save();
+
+      // points side effects (kept)
+      try {
+        if (current === "requested" && nextStatus === "accepted") {
+          const cost = Number(POINTS?.BOOK_LEARN_SESSION_COST ?? 10);
+          await deductPoints(
+            learnerId,
+            cost,
+            REASONS?.BOOK_SESSION || "book_session",
+            { sessionId: String(s._id) }
+          );
+        }
+        if (current === "accepted" && nextStatus === "completed") {
+          const earn = Number(POINTS?.TEACH_SESSION_EARN ?? 10);
+          await addPoints(
+            mentorId,
+            earn,
+            REASONS?.TEACH_SESSION || "teach_session",
+            { sessionId: String(s._id) }
+          );
+        }
+        if (nextStatus === "cancelled" && wasLate) {
+          const penalty = Number(POINTS?.LATE_CANCEL_PENALTY ?? 2);
+          await deductPoints(
+            userId,
+            penalty,
+            REASONS?.LATE_CANCEL || "late_cancel",
+            { sessionId: String(s._id) }
+          );
+        }
+      } catch (e) {
+        console.error("POINTS SIDE-EFFECT ERROR:", e);
+      }
+
+      const populated = await populateSession(s._id);
+      return res.json({ session: toDTO(populated) });
+    } catch (err) {
+      console.error("UPDATE STATUS ERROR:", err);
+      return res.status(500).json({ error: "Failed to update session" });
+    }
+  }
+
+  // create
+  router.post("/", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const { mentorId, skill, level, scheduledAt, note } = req.body || {};
+      if (!isValidObjectId(mentorId))
+        return res.status(400).json({ error: "Invalid mentorId" });
+      if (!skill) return res.status(400).json({ error: "Missing skill" });
+      if (!scheduledAt)
+        return res.status(400).json({ error: "Missing scheduledAt" });
+
+      const when = new Date(String(scheduledAt));
+      if (Number.isNaN(when.getTime()))
+        return res.status(400).json({ error: "Invalid scheduledAt" });
+      if (when.getTime() <= Date.now())
+        return res
+          .status(400)
+          .json({ error: "Cannot request a session in the past" });
+
+      const s = await Session.create({
+        mentorId: String(mentorId),
+        learnerId: userId,
+        skill: String(skill),
+        level: String(level || "Not specified"),
         scheduledAt: when,
-        note: String(note || "").trim(),
-        status: "requested",
+        note: String(note || ""),
       });
 
-      const populated = await Session.findById(doc._id)
-        .populate(
-          "mentorId",
-          "fullName email points xp streak avgRating ratingCount"
-        )
-        .populate(
-          "learnerId",
-          "fullName email points xp streak avgRating ratingCount"
-        );
-
-      return res.json({
-        session: {
-          ...populated.toObject(),
-          mentor: pickUser(populated.mentorId),
-          learner: pickUser(populated.learnerId),
-        },
-      });
+      const populated = await populateSession(s._id);
+      return res.json({ session: toDTO(populated) });
     } catch (err) {
       console.error("CREATE SESSION ERROR:", err);
       return res.status(500).json({ error: "Failed to create session" });
     }
   });
 
-  // ===============================
-  // LIST MY SESSIONS
-  // GET /api/sessions/mine?role=any|mentor|learner&scope=upcoming|past|all&statuses=requested,accepted
-  // ===============================
+  // list mine + auto-cancel expired
   router.get("/mine", authMiddleware, async (req, res) => {
     try {
       const userId = String(req.userId);
-
-      const roleRaw = String(req.query.role || "any").trim();
-      const role = roleRaw === "all" ? "any" : roleRaw;
-
-      const scope = String(req.query.scope || "all").trim();
-      const statusesCsv = String(
-        req.query.statuses || req.query.status || ""
-      ).trim();
-
       const now = new Date();
-      const q = {};
 
-      if (role === "mentor") q.mentorId = userId;
-      else if (role === "learner") q.learnerId = userId;
-      else q.$or = [{ mentorId: userId }, { learnerId: userId }];
+      await Session.updateMany(
+        { status: "requested", scheduledAt: { $lte: now } },
+        {
+          $set: {
+            status: "cancelled",
+            cancelledAt: now,
+            cancelReason: "expired_request",
+          },
+        }
+      );
 
-      if (scope === "upcoming") q.scheduledAt = { $gte: now };
-      else if (scope === "past") q.scheduledAt = { $lt: now };
+      const tooOld = new Date(
+        Date.now() - RULES.COMPLETE_MAX_DELAY_MIN * 60 * 1000
+      );
+      await Session.updateMany(
+        { status: "accepted", scheduledAt: { $lte: tooOld } },
+        {
+          $set: {
+            status: "cancelled",
+            cancelledAt: now,
+            cancelReason: "missed",
+          },
+        }
+      );
 
-      if (statusesCsv) {
-        const statuses = statusesCsv
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (statuses.length) q.status = { $in: statuses };
-      }
+      const list = await Session.find({
+        $and: [
+          { $or: [{ mentorId: userId }, { learnerId: userId }] },
+          {
+            hiddenFor: {
+              $nin: [new mongoose.Types.ObjectId(userId), String(userId)],
+            },
+          },
+        ],
+      })
 
-      const list = await Session.find(q)
-        .sort({ scheduledAt: 1 })
+        .sort({ scheduledAt: -1 })
         .populate(
           "mentorId",
           "fullName email points xp streak avgRating ratingCount"
@@ -127,156 +383,199 @@ module.exports = function sessionsRouter(authMiddleware) {
           "fullName email points xp streak avgRating ratingCount"
         );
 
-      const out = list.map((s) => ({
-        ...s.toObject(),
-        mentor: pickUser(s.mentorId),
-        learner: pickUser(s.learnerId),
-      }));
-
-      return res.json({ sessions: out });
+      return res.json({ sessions: list.map(toDTO) });
     } catch (err) {
       console.error("LIST SESSIONS ERROR:", err);
       return res.status(500).json({ error: "Failed to list sessions" });
     }
   });
 
-  // ===============================
-  // UPDATE SESSION STATUS
-  // PATCH /api/sessions/:id/status { status }
-  // ===============================
-  router.patch("/:id/status", authMiddleware, async (req, res) => {
+  // status + shortcuts
+  router.patch("/:id/status", authMiddleware, (req, res) =>
+    updateStatusInternal(req, res, req.body?.status)
+  );
+  router.post("/:id/join", authMiddleware, async (req, res) => {
     try {
       const userId = String(req.userId);
       const id = String(req.params.id);
-      const nextStatus = String(req.body?.status || "").trim();
-
-      const allowed = new Set([
-        "accepted",
-        "rejected",
-        "cancelled",
-        "completed",
-      ]);
-      if (!allowed.has(nextStatus)) {
-        return res.status(400).json({ error: "Invalid status" });
-      }
-      if (!isValidObjectId(id)) {
+      if (!isValidObjectId(id))
         return res.status(400).json({ error: "Invalid session id" });
-      }
 
       const s = await Session.findById(id);
       if (!s) return res.status(404).json({ error: "Session not found" });
 
-      const isMentor = String(s.mentorId) === userId;
-      const isLearner = String(s.learnerId) === userId;
-      if (!isMentor && !isLearner) {
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+      const isMentor = mentorId === userId;
+      const isLearner = learnerId === userId;
+      if (!isMentor && !isLearner)
         return res.status(403).json({ error: "Not allowed" });
+
+      if (s.status === "requested" && isTimeReached(s.scheduledAt)) {
+        s.status = "cancelled";
+        s.cancelledAt = new Date();
+        s.cancelReason = "expired_request";
+        s.cancelledBy = userId;
+        await s.save();
+        return res
+          .status(400)
+          .json({ error: "Request expired and was cancelled automatically" });
       }
 
-      // rules
-      if (nextStatus === "accepted" || nextStatus === "rejected") {
-        if (!isMentor) return res.status(403).json({ error: "Mentor only" });
-        if (s.status !== "requested") {
-          return res.status(400).json({
-            error: "Can only accept/reject requested sessions",
-          });
-        }
-      }
+      if (normalizeStatus(s.status) !== "accepted")
+        return res
+          .status(400)
+          .json({ error: "Only accepted sessions can be joined" });
 
-      if (nextStatus === "completed") {
-        if (s.status !== "accepted") {
-          return res.status(400).json({
-            error: "Only accepted sessions can be completed",
-          });
-        }
-      }
+      const chk = canJoinNow(s);
+      if (!chk.ok) return res.status(400).json({ error: chk.reason });
 
-      if (nextStatus === "cancelled") {
-        if (s.status === "completed") {
-          return res
-            .status(400)
-            .json({ error: "Cannot cancel completed session" });
-        }
-      }
-
-      s.status = nextStatus;
+      const joinedBy = Array.isArray(s.joinedBy) ? s.joinedBy.map(String) : [];
+      if (!joinedBy.includes(userId))
+        s.joinedBy = [...(s.joinedBy || []), userId];
+      if (!s.joinedAt) s.joinedAt = new Date();
       await s.save();
 
-      // OPTIONAL gamification: keep or delete حسب البوك عندك
-      // if (nextStatus === "completed") {
-      //   const mentor = await User.findById(s.mentorId);
-      //   const learner = await User.findById(s.learnerId);
-      //   if (mentor) { mentor.points += 10; mentor.xp += 25; mentor.streak += 1; await mentor.save(); }
-      //   if (learner) { learner.xp += 10; await learner.save(); }
-      // }
-
-      const populated = await Session.findById(id)
-        .populate(
-          "mentorId",
-          "fullName email points xp streak avgRating ratingCount"
-        )
-        .populate(
-          "learnerId",
-          "fullName email points xp streak avgRating ratingCount"
-        );
-
-      return res.json({
-        session: {
-          ...populated.toObject(),
-          mentor: pickUser(populated.mentorId),
-          learner: pickUser(populated.learnerId),
-        },
-      });
+      const populated = await populateSession(s._id);
+      return res.json({ session: toDTO(populated) });
     } catch (err) {
-      console.error("UPDATE SESSION STATUS ERROR:", err);
-      return res.status(500).json({ error: "Failed to update session status" });
+      console.error("JOIN ERROR:", err);
+      return res.status(500).json({ error: "Failed to join session" });
     }
   });
 
-  // ===============================
-  // RATE SESSION (for your SessionCard)
-  // POST /api/sessions/:id/rate  { rating, feedback }
-  // ===============================
   router.post("/:id/rate", authMiddleware, async (req, res) => {
     try {
       const userId = String(req.userId);
       const id = String(req.params.id);
-      const rating = Number(req.body?.rating);
-      const feedback = String(req.body?.feedback || "").trim();
-
       if (!isValidObjectId(id))
         return res.status(400).json({ error: "Invalid session id" });
-      if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
-        return res
-          .status(400)
-          .json({ error: "rating must be between 1 and 5" });
-      }
+
+      const rating = Number(req.body?.rating);
+      const feedback = String(req.body?.feedback || "");
+
+      const result = await rateSession({
+        sessionId: id,
+        userId,
+        rating,
+        feedback,
+      });
+      return res.json({ ok: true, rating: result?.rating || null });
+    } catch (err) {
+      const status = Number(err?.status || 500);
+      console.error("RATE ERROR:", err);
+      return res
+        .status(status)
+        .json({ error: err?.message || "Failed to rate session" });
+    }
+  });
+
+  // ✅ SMART DELETE ENDPOINT
+  router.post("/:id/delete", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
 
       const s = await Session.findById(id);
       if (!s) return res.status(404).json({ error: "Session not found" });
 
-      const isMentor = String(s.mentorId) === userId;
-      const isLearner = String(s.learnerId) === userId;
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+      const isMentor = mentorId === userId;
+      const isLearner = learnerId === userId;
       if (!isMentor && !isLearner)
         return res.status(403).json({ error: "Not allowed" });
 
-      if (s.status !== "completed") {
-        return res
-          .status(400)
-          .json({ error: "You can rate only completed sessions" });
+      // auto-cancel expired requested
+      if (s.status === "requested" && isTimeReached(s.scheduledAt)) {
+        s.status = "cancelled";
+        s.cancelledAt = new Date();
+        s.cancelReason = "expired_request";
+        s.cancelledBy = userId;
       }
 
-      if (s.rating) {
-        return res.status(400).json({ error: "Session already rated" });
+      const st = normalizeStatus(s.status);
+
+      // helper: hide for current user
+      const hideForMe = async () => {
+        const me = new mongoose.Types.ObjectId(userId);
+        const arr = Array.isArray(s.hiddenFor) ? s.hiddenFor.map(String) : [];
+        if (!arr.includes(String(me))) {
+          s.hiddenFor = [...(s.hiddenFor || []), me];
+        }
+      };
+
+      // 1) requested
+      if (st === "requested") {
+        if (isLearner) {
+          // I requested it -> treat delete as cancel for both + hide for me
+          s.status = "cancelled";
+          s.cancelledAt = new Date();
+          s.cancelReason = "deleted_by_requester";
+          s.cancelledBy = userId;
+          s.deleteNotice = "The requester deleted the request.";
+          await hideForMe();
+          await s.save();
+          return res.json({ ok: true, action: "cancelled_hidden" });
+        } else if (isMentor) {
+          // request received -> treat delete as reject + hide for me
+          s.status = "rejected";
+          s.deleteNotice = "The mentor deleted the request (rejected).";
+          await hideForMe();
+          await s.save();
+          return res.json({ ok: true, action: "rejected_hidden" });
+        }
       }
 
-      s.rating = Math.round(rating);
-      s.feedback = feedback;
-      await s.save();
+      // 2) accepted
+      if (st === "accepted") {
+        // delete => cancel for both, hide for me, other sees cancelled + notice
+        const wasLate = isLateCancel(s.scheduledAt);
+        s.status = "cancelled";
+        s.cancelledAt = new Date();
+        s.cancelReason = wasLate ? "late_cancel" : "deleted_after_accept";
+        s.cancelledBy = userId;
+        s.deleteNotice =
+          "The other user deleted this session after acceptance.";
+        await hideForMe();
+        await s.save();
 
-      return res.json({ ok: true, session: s });
+        // apply late-cancel penalty (book rules)
+        try {
+          if (wasLate) {
+            const penalty = Number(POINTS?.LATE_CANCEL_PENALTY ?? 2);
+            await deductPoints(
+              userId,
+              penalty,
+              REASONS?.LATE_CANCEL || "late_cancel",
+              { sessionId: String(s._id) }
+            );
+          }
+        } catch (e) {
+          console.error("DELETE->LATE PENALTY ERROR:", e);
+        }
+
+        return res.json({
+          ok: true,
+          action: "cancelled_hidden_other_notified",
+        });
+      }
+
+      // 3) completed / cancelled / rejected => just hide for me
+      if (st === "completed" || st === "cancelled" || st === "rejected") {
+        await hideForMe();
+        await s.save();
+        return res.json({ ok: true, action: "hidden" });
+      }
+
+      return res
+        .status(400)
+        .json({ error: "Cannot delete this session in its current state" });
     } catch (err) {
-      console.error("RATE SESSION ERROR:", err);
-      return res.status(500).json({ error: "Failed to rate session" });
+      console.error("SMART DELETE ERROR:", err);
+      return res.status(500).json({ error: "Failed to delete session" });
     }
   });
 

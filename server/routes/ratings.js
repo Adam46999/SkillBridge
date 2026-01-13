@@ -1,88 +1,72 @@
-// server/routes/ratings.js
+// server/routes/users.js
 const express = require("express");
 const mongoose = require("mongoose");
-
-const Rating = require("../models/Rating");
-const Session = require("../models/Session");
 const User = require("../models/User");
 
-module.exports = function ratingsRouter(authMiddleware) {
+function isValidObjectId(id) {
+  return mongoose.Types.ObjectId.isValid(String(id));
+}
+
+function toPublicUser(u) {
+  if (!u) return null;
+
+  return {
+    id: String(u._id),
+    fullName: String(u.fullName || ""),
+    points: Number(u.points || 0),
+    xp: Number(u.xp || 0),
+    streak: Number(u.streak || 0),
+
+    // ratings
+    avgRating: Number(u.avgRating || 0),
+    ratingCount: Number(u.ratingCount || 0),
+
+    // profile info
+    skillsToTeach: Array.isArray(u.skillsToTeach) ? u.skillsToTeach : [],
+    availabilitySlots: Array.isArray(u.availabilitySlots)
+      ? u.availabilitySlots
+      : [],
+    preferences:
+      u.preferences && typeof u.preferences === "object"
+        ? {
+            communicationModes: Array.isArray(u.preferences.communicationModes)
+              ? u.preferences.communicationModes
+              : [],
+            languages: Array.isArray(u.preferences.languages)
+              ? u.preferences.languages
+              : [],
+          }
+        : { communicationModes: [], languages: [] },
+  };
+}
+
+module.exports = function usersRouter(authMiddleware) {
   const router = express.Router();
 
-  // POST /api/ratings
-  router.post("/", authMiddleware, async (req, res) => {
+  /**
+   * GET /api/users/:id
+   * Public mentor profile (for mentor page)
+   */
+  router.get("/:id", authMiddleware, async (req, res) => {
     try {
-      const fromUserId = String(req.userId);
-      const { sessionId, score, comment } = req.body || {};
+      const id = String(req.params.id);
 
-      if (!sessionId || !score) {
-        return res.status(400).json({
-          error: "sessionId and score are required",
-        });
+      if (!isValidObjectId(id)) {
+        return res.status(400).json({ error: "Invalid user id" });
       }
 
-      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
-        return res.status(400).json({ error: "Invalid session id" });
-      }
+      const u = await User.findById(id)
+        .select(
+          "fullName points xp streak avgRating ratingCount skillsToTeach availabilitySlots preferences"
+        )
+        .lean();
 
-      const s = await Session.findById(sessionId);
-      if (!s) return res.status(404).json({ error: "Session not found" });
+      if (!u) return res.status(404).json({ error: "User not found" });
 
-      if (s.status !== "completed") {
-        return res.status(400).json({
-          error: "You can rate only completed sessions",
-        });
-      }
-
-      const isLearner = String(s.learnerId) === fromUserId;
-      const isMentor = String(s.mentorId) === fromUserId;
-
-      if (!isLearner && !isMentor) {
-        return res.status(403).json({ error: "Not allowed" });
-      }
-
-      const toUserId = isLearner ? s.mentorId : s.learnerId;
-
-      const rating = await Rating.create({
-        sessionId,
-        fromUserId,
-        toUserId,
-        score,
-        comment: String(comment || "").trim(),
-      });
-
-      // ===== Gamification =====
-      const receiver = await User.findById(toUserId);
-
-      receiver.ratingCount += 1;
-      receiver.ratingAvg =
-        (receiver.ratingAvg * (receiver.ratingCount - 1) + score) /
-        receiver.ratingCount;
-
-      // bonus for good rating
-      if (score >= 4) {
-        receiver.points += 2; // 📘 book: +2 bonus
-        receiver.xp += 10;
-      }
-
-      await receiver.save();
-
-      return res.json({
-        rating,
-        updatedUser: {
-          _id: receiver._id,
-          ratingAvg: receiver.ratingAvg,
-          ratingCount: receiver.ratingCount,
-          points: receiver.points,
-          xp: receiver.xp,
-        },
-      });
+      return res.json(toPublicUser(u));
     } catch (err) {
-      console.error("RATE SESSION ERROR:", err);
-      return res.status(500).json({
-        error: "Failed to submit rating",
-        details: err instanceof Error ? err.message : "Unknown server error",
-      });
+      console.error("GET PUBLIC USER ERROR:", err);
+      return res.status(500).json({ error: "Failed to load user profile" });
     }
   });
 

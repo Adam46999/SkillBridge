@@ -23,6 +23,9 @@ import {
   getMentorMatches,
 } from "../lib/api";
 
+// ✅ chat: open conversation directly from results
+import { getOrCreateConversation } from "../lib/chat/api";
+
 type User = {
   _id: string;
   fullName: string;
@@ -171,6 +174,43 @@ export default function FindMentorScreen() {
   const handleBack = () => router.back();
 
   // ✅ NEW: open mentor profile
+  const openMentorProfile = (mentorId: string) => {
+    router.push({ pathname: "/mentor/[id]", params: { id: mentorId } } as any);
+  };
+
+  // ✅ NEW: open chat directly
+  const openMentorChat = async (mentorId: string) => {
+    const token = await AsyncStorage.getItem("token");
+    if (!token) {
+      router.replace("/(auth)/login" as any);
+      return;
+    }
+
+    const conversationId = await getOrCreateConversation(token, mentorId);
+
+    // ✅ هذا هو الحل
+    if (!conversationId || typeof conversationId !== "string") {
+      console.warn("Invalid conversationId, aborting navigation");
+      return;
+    }
+
+    router.push({
+      pathname: "/(tabs)/chats/[conversationId]",
+      params: { conversationId },
+    });
+  };
+
+  const requestSession = (m: MentorMatch) => {
+    router.push({
+      pathname: "/sessions/request",
+      params: {
+        mentorId: m.mentorId,
+        mentorName: m.fullName,
+        skill: m.mainMatchedSkill?.name,
+        level: m.mainMatchedSkill?.level,
+      },
+    } as any);
+  };
 
   if (loadingUser && !user && !errorText) {
     return (
@@ -442,7 +482,12 @@ export default function FindMentorScreen() {
           )}
 
           {matches.map((m) => (
-            <View key={m.mentorId} style={styles.matchCard}>
+            <TouchableOpacity
+              key={m.mentorId}
+              activeOpacity={0.92}
+              onPress={() => openMentorProfile(m.mentorId)}
+              style={styles.matchCardClickable}
+            >
               <View style={styles.matchHeaderRow}>
                 <Text style={styles.matchName}>{m.fullName}</Text>
                 <Text style={styles.matchScore}>
@@ -485,25 +530,37 @@ export default function FindMentorScreen() {
                 </Text>
               )}
 
-              {/* ✅ FIX: add onPress */}
+              {/* actions */}
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionSecondary]}
+                  activeOpacity={0.85}
+                  onPress={() => openMentorProfile(m.mentorId)}
+                >
+                  <Text style={styles.actionSecondaryText}>View profile</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionPrimary]}
+                  activeOpacity={0.85}
+                  onPress={() => openMentorChat(m.mentorId)}
+                >
+                  <Text style={styles.actionPrimaryText}>Message</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity
                 style={styles.matchActionButton}
                 activeOpacity={0.85}
-                onPress={() =>
-                  router.push({
-                    pathname: "/sessions/request",
-                    params: {
-                      mentorId: m.mentorId,
-                      mentorName: m.fullName,
-                      skill: m.mainMatchedSkill?.name,
-                      level: m.mainMatchedSkill?.level,
-                    },
-                  } as any)
-                }
+                onPress={() => requestSession(m)}
               >
                 <Text style={styles.matchActionText}>Request session</Text>
               </TouchableOpacity>
-            </View>
+
+              <Text style={styles.tapHint}>
+                Tip: tap anywhere on this card to open profile
+              </Text>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -777,7 +834,9 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontSize: 12,
   },
-  matchCard: {
+
+  // ✅ clickable card
+  matchCardClickable: {
     marginTop: 10,
     backgroundColor: "#020617",
     borderRadius: 14,
@@ -785,6 +844,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1E293B",
   },
+
   matchHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -826,19 +886,60 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     fontSize: 11,
   },
-  matchActionButton: {
-    marginTop: 8,
+
+  actionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+  actionBtn: {
+    flex: 1,
     borderRadius: 999,
-    paddingVertical: 8,
+    paddingVertical: 9,
+    alignItems: "center",
+  },
+  actionPrimary: {
+    backgroundColor: "#F97316",
+    borderWidth: 1,
+    borderColor: "#FB923C",
+  },
+  actionPrimaryText: {
+    color: "#111827",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  actionSecondary: {
+    borderWidth: 1,
+    borderColor: "#4B5563",
+    backgroundColor: "#020617",
+  },
+  actionSecondaryText: {
+    color: "#E5E7EB",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  matchActionButton: {
+    marginTop: 10,
+    borderRadius: 999,
+    paddingVertical: 9,
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#4B5563",
+    backgroundColor: "#020617",
   },
   matchActionText: {
     color: "#E5E7EB",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
   },
+
+  tapHint: {
+    marginTop: 8,
+    color: "#64748B",
+    fontSize: 11,
+  },
+
   modeHint: {
     marginTop: 10,
     color: "#9CA3AF",
