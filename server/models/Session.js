@@ -55,6 +55,19 @@ const SessionSchema = new mongoose.Schema(
     // legacy/simple rating (kept)
     rating: { type: Number, min: 1, max: 5, default: null },
     feedback: { type: String, default: "", trim: true },
+
+    // ---------------- Session Room additions (NEW) ----------------
+
+    // Chat messages stored inside the session (simple & fast)
+    // shape: { _id, senderId, text, createdAt }
+    chat: { type: Array, default: [] },
+
+    // Uploaded files stored inside the session
+    // shape: { _id, uploaderId, name, url, createdAt }
+    files: { type: Array, default: [] },
+
+    // Zoom link for this session (optional)
+    zoomJoinUrl: { type: String, default: "", trim: true },
   },
   { timestamps: true }
 );

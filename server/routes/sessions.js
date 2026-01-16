@@ -10,6 +10,9 @@ const {
 } = require("../services/pointsService");
 const { POINTS, CANCEL, REASONS } = require("../services/gamificationRules");
 const { rateSession } = require("../services/ratingsService");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
 
 function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(String(id));
@@ -124,6 +127,19 @@ function toDTO(doc) {
   };
 }
 
+// ---------------- FILE UPLOAD (NEW) ----------------
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const safe = String(file.originalname || "file").replace(/[^\w.\-]/g, "_");
+    cb(null, `${Date.now()}_${safe}`);
+  },
+});
+const upload = multer({ storage });
+
 module.exports = function sessionsRouter(authMiddleware) {
   const router = express.Router();
 
@@ -229,17 +245,23 @@ module.exports = function sessionsRouter(authMiddleware) {
 
       // complete checks
       if (nextStatus === "completed") {
-        if (!isMentor) return res.status(403).json({ error: "Mentor only" });
+        // ---------------- CHANGE HERE (NEW UX) ----------------
+        // بدك زر End Meeting يكمّل الجلسة حتى لو مش mentor
+        // (إذا بدك mentor only ارجع حط شرط isMentor مثل ما كان)
+
         const chk = canCompleteNow(s);
         if (!chk.ok) return res.status(400).json({ error: chk.reason });
 
         const joinedBy = Array.isArray(s.joinedBy)
           ? s.joinedBy.map(String)
           : [];
-        if (!joinedBy.includes(mentorId))
-          return res
-            .status(400)
-            .json({ error: "Mentor must join before completing" });
+        const mentorHasJoined = joinedBy.includes(mentorId);
+        const learnerHasJoined = joinedBy.includes(learnerId);
+
+        if (!mentorHasJoined && !learnerHasJoined)
+          return res.status(400).json({
+            error: "At least one side must join before completing",
+          });
 
         s.completedAt = new Date();
       }
@@ -331,6 +353,8 @@ module.exports = function sessionsRouter(authMiddleware) {
     }
   });
 
+  // ---------------- IMPORTANT ORDER FIX ----------------
+  // لازم /mine قبل /:id
   // list mine + auto-cancel expired
   router.get("/mine", authMiddleware, async (req, res) => {
     try {
@@ -372,7 +396,6 @@ module.exports = function sessionsRouter(authMiddleware) {
           },
         ],
       })
-
         .sort({ scheduledAt: -1 })
         .populate(
           "mentorId",
@@ -390,10 +413,34 @@ module.exports = function sessionsRouter(authMiddleware) {
     }
   });
 
+  // get by id (بعد /mine)
+  router.get("/:id", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      const s = await populateSession(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId?._id || s.mentorId);
+      const learnerId = String(s.learnerId?._id || s.learnerId);
+      if (mentorId !== userId && learnerId !== userId)
+        return res.status(403).json({ error: "Not allowed" });
+
+      return res.json({ session: toDTO(s) });
+    } catch (err) {
+      console.error("GET SESSION ERROR:", err);
+      return res.status(500).json({ error: "Failed to get session" });
+    }
+  });
+
   // status + shortcuts
   router.patch("/:id/status", authMiddleware, (req, res) =>
     updateStatusInternal(req, res, req.body?.status)
   );
+
   router.post("/:id/join", authMiddleware, async (req, res) => {
     try {
       const userId = String(req.userId);
@@ -443,6 +490,135 @@ module.exports = function sessionsRouter(authMiddleware) {
       return res.status(500).json({ error: "Failed to join session" });
     }
   });
+
+  // ---------------- Session Room: CHAT (NEW) ----------------
+  router.get("/:id/chat", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+      if (mentorId !== userId && learnerId !== userId)
+        return res.status(403).json({ error: "Not allowed" });
+
+      const messages = Array.isArray(s.chat) ? s.chat : [];
+      return res.json({ messages });
+    } catch (err) {
+      console.error("GET CHAT ERROR:", err);
+      return res.status(500).json({ error: "Failed to load chat" });
+    }
+  });
+
+  router.post("/:id/chat", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      const text = String(req.body?.text || "").trim();
+      if (!text) return res.status(400).json({ error: "Missing text" });
+
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+      if (mentorId !== userId && learnerId !== userId)
+        return res.status(403).json({ error: "Not allowed" });
+
+      const msg = {
+        _id: new mongoose.Types.ObjectId().toString(),
+        senderId: userId,
+        text,
+        createdAt: new Date().toISOString(),
+      };
+
+      s.chat = Array.isArray(s.chat) ? s.chat : [];
+      s.chat.push(msg);
+
+      await s.save();
+      return res.json({ message: msg });
+    } catch (err) {
+      console.error("POST CHAT ERROR:", err);
+      return res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  // ---------------- Session Room: FILES (NEW) ----------------
+  router.get("/:id/files", authMiddleware, async (req, res) => {
+    try {
+      const userId = String(req.userId);
+      const id = String(req.params.id);
+      if (!isValidObjectId(id))
+        return res.status(400).json({ error: "Invalid session id" });
+
+      const s = await Session.findById(id);
+      if (!s) return res.status(404).json({ error: "Session not found" });
+
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
+      if (mentorId !== userId && learnerId !== userId)
+        return res.status(403).json({ error: "Not allowed" });
+
+      const files = Array.isArray(s.files) ? s.files : [];
+      return res.json({ files: files.slice().reverse() });
+    } catch (err) {
+      console.error("LIST FILES ERROR:", err);
+      return res.status(500).json({ error: "Failed to list files" });
+    }
+  });
+
+  router.post(
+    "/:id/files",
+    authMiddleware,
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        const userId = String(req.userId);
+        const id = String(req.params.id);
+
+        if (!isValidObjectId(id))
+          return res.status(400).json({ error: "Invalid session id" });
+
+        const s = await Session.findById(id);
+        if (!s) return res.status(404).json({ error: "Session not found" });
+
+        const mentorId = String(s.mentorId);
+        const learnerId = String(s.learnerId);
+        if (mentorId !== userId && learnerId !== userId)
+          return res.status(403).json({ error: "Not allowed" });
+
+        if (!req.file) return res.status(400).json({ error: "Missing file" });
+
+        // لازم السيرفر يكون بيسيرف /uploads ستاتيك
+        const url = `/uploads/${req.file.filename}`;
+
+        const f = {
+          _id: new mongoose.Types.ObjectId().toString(),
+          uploaderId: userId,
+          name: req.file.originalname,
+          url,
+          createdAt: new Date().toISOString(),
+        };
+
+        s.files = Array.isArray(s.files) ? s.files : [];
+        s.files.push(f);
+        await s.save();
+
+        return res.json({ file: f });
+      } catch (err) {
+        console.error("UPLOAD FILE ERROR:", err);
+        return res.status(500).json({ error: "Failed to upload file" });
+      }
+    }
+  );
 
   router.post("/:id/rate", authMiddleware, async (req, res) => {
     try {
