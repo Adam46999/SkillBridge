@@ -19,6 +19,7 @@ import {
   rateSession,
   updateSessionStatus,
 } from "../api/sessionsApi";
+import { getOrCreateConversation } from "../../../lib/chat/api";
 
 import { formatSessionDateTime, statusBadge } from "../utils/formatSession";
 
@@ -226,7 +227,6 @@ export default function SessionCard({
     : [];
 
   const mentorJoined = !!mentorId && joinedBy.includes(mentorId);
-  const learnerJoined = !!learnerId && joinedBy.includes(learnerId);
 
   // ✅ Rules (UI mirrors backend)
   const canAcceptReject = isMentor && uiStatus === "requested" && !timeReached;
@@ -238,19 +238,9 @@ export default function SessionCard({
   const canJoin =
     (isMentor || isLearner) && uiStatus === "accepted" && joinCheck.ok;
 
-  const canComplete =
-    isMentor && uiStatus === "accepted" && completeCheck.ok && mentorJoined;
+  const canComplete = isMentor && uiStatus === "accepted" && completeCheck.ok && mentorJoined;
 
-  const canRate =
-    (isMentor || isLearner) &&
-    uiStatus === "completed" &&
-    !(session as any).rating;
-
-  const canHide =
-    (isMentor || isLearner) &&
-    (uiStatus === "rejected" ||
-      uiStatus === "cancelled" ||
-      uiStatus === "completed");
+  const canRate = (isMentor || isLearner) && uiStatus === "completed" && !(session as any).rating;
 
   const setStatus = async (next: SessionStatus) => {
     if (!token) {
@@ -323,8 +313,19 @@ export default function SessionCard({
         console.log("JoinSession skipped:", e?.message);
       }
 
-      // 2) افتح غرفة السيشن
-      router.push(`/sessions/room/${sessionId}`);
+      // 2) Open or create the conversation with the peer and navigate to Chat
+      const peerId = isMentor ? learnerId : mentorId;
+      try {
+        const tokenLocal = token as string;
+        const convId = await getOrCreateConversation(tokenLocal, peerId);
+        router.push({
+          pathname: "/(tabs)/chats/[conversationId]",
+          params: { conversationId: convId, peerId, peerName: otherName },
+        } as any);
+      } catch (e: any) {
+        console.log("Failed to open conversation, falling back to session room:", e?.message);
+        router.push(`/sessions/room/${sessionId}`);
+      }
 
       // 3) sync
       await onChanged();
@@ -426,14 +427,17 @@ export default function SessionCard({
       (session as any)?.learner?.email ||
       "User";
 
+  const sessionDeleteNotice = (session as any)?.deleteNotice;
+  const sessionCancelReason = (session as any)?.cancelReason;
+
   const cancelNotice = useMemo(() => {
     const st = String(uiStatus || "").toLowerCase();
     if (st !== "cancelled" && st !== "rejected") return "";
 
-    const dn = String((session as any)?.deleteNotice || "").trim();
+    const dn = String(sessionDeleteNotice || "").trim();
     if (dn) return dn;
 
-    const cr = String((session as any)?.cancelReason || "").trim();
+    const cr = String(sessionCancelReason || "").trim();
     if (cr === "expired_request") return "This request expired automatically.";
     if (cr === "missed") return "Session time passed and was cancelled.";
     if (cr === "late_cancel") return "Cancelled late.";
@@ -441,11 +445,7 @@ export default function SessionCard({
 
     if (st === "rejected") return "This request was rejected.";
     return "Cancelled.";
-  }, [
-    session.status,
-    (session as any)?.deleteNotice,
-    (session as any)?.cancelReason,
-  ]);
+  }, [uiStatus, sessionDeleteNotice, sessionCancelReason]);
 
   return (
     <View

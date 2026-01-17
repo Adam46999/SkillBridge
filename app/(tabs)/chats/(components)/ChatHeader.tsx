@@ -11,6 +11,7 @@ type Props = {
   onPressTitle?: () => void; // open profile
   onPressAvatar?: () => void; // open profile
   onRequestSession?: () => void; // request session CTA
+  onStartCall?: () => void; // start call CTA
 
   // realtime UI
   conn: ConnStatus;
@@ -46,6 +47,7 @@ export default function ChatHeader({
   onPressTitle,
   onPressAvatar,
   onRequestSession,
+  onStartCall,
   conn,
   peerTyping,
   peerOnline,
@@ -77,8 +79,8 @@ export default function ChatHeader({
     return "#64748B";
   }, [conn, peerOnline, peerTyping]);
 
-  const canOpenProfile = !!onPressTitle || !!onPressAvatar;
   const canRequest = !!onRequestSession;
+  const canCall = !!onStartCall;
 
   return (
     <View style={styles.header}>
@@ -139,6 +141,21 @@ export default function ChatHeader({
       </View>
 
       <View style={styles.right}>
+        {canCall ? (
+          <Pressable
+            onPress={onStartCall}
+            accessibilityRole="button"
+            accessibilityLabel="Start call"
+            style={({ pressed }) => [
+              styles.callBtn,
+              pressed ? { opacity: 0.92 } : null,
+            ]}
+            hitSlop={10}
+          >
+            <Text style={styles.callText}>{isRTL ? "مكالمة" : "Call"}</Text>
+          </Pressable>
+        ) : null}
+
         {canRequest ? (
           <Pressable
             onPress={onRequestSession}
@@ -253,6 +270,22 @@ const styles = StyleSheet.create({
   },
   reqText: {
     color: "#E5E7EB",
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  callBtn: {
+    height: 32,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "#0B1220",
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  callText: {
+    color: "#60A5FA",
     fontWeight: "900",
     fontSize: 12,
   },

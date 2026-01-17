@@ -68,28 +68,6 @@ export default function SessionRoomScreen() {
 
   const zoomUrl = useMemo(() => (session as any)?.zoomJoinUrl || "", [session]);
 
-  async function loadAll(tk: string) {
-    try {
-      setLoading(true);
-      const s = await getSessionById(tk, sessionId);
-      setSession(s);
-
-      setChatLoading(true);
-      const chat = await listSessionChat(tk, sessionId);
-      setMessages(chat);
-
-      setFilesLoading(true);
-      const fl = await listSessionFiles(tk, sessionId);
-      setFiles(fl);
-    } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Failed to load session room");
-    } finally {
-      setLoading(false);
-      setChatLoading(false);
-      setFilesLoading(false);
-    }
-  }
-
   useEffect(() => {
     (async () => {
       const tk = await getToken();
@@ -104,7 +82,27 @@ export default function SessionRoomScreen() {
         Alert.alert("Missing id", "No session id in route.");
         return;
       }
-      await loadAll(tk);
+
+      // inline loadAll to avoid effect dependency on outer function identity
+      try {
+        setLoading(true);
+        const s = await getSessionById(tk, sessionId);
+        setSession(s);
+
+        setChatLoading(true);
+        const chat = await listSessionChat(tk, sessionId);
+        setMessages(chat);
+
+        setFilesLoading(true);
+        const fl = await listSessionFiles(tk, sessionId);
+        setFiles(fl);
+      } catch (e: any) {
+        Alert.alert("Failed", e?.message || "Failed to load session room");
+      } finally {
+        setLoading(false);
+        setChatLoading(false);
+        setFilesLoading(false);
+      }
     })();
   }, [sessionId]);
 

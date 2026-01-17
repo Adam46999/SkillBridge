@@ -28,6 +28,7 @@ type Props = {
   filterMode: FilterMode;
   onChangeFilter: (mode: FilterMode) => void;
   onLayoutCard?: (y: number) => void;
+  onEditLevel?: (skill: SkillToLearn) => void;
 };
 
 export const SkillsToLearnList: React.FC<Props> = ({
@@ -42,6 +43,7 @@ export const SkillsToLearnList: React.FC<Props> = ({
   filterMode,
   onChangeFilter,
   onLayoutCard,
+  onEditLevel,
 }) => {
   const getFilterIcon = (mode: FilterMode) => {
     if (mode === "all") return "✔";
@@ -121,6 +123,15 @@ export const SkillsToLearnList: React.FC<Props> = ({
                   >
                     <Text style={styles.favoriteText}>{fav ? "★" : "☆"}</Text>
                   </TouchableOpacity>
+
+                  {onEditLevel && (
+                    <TouchableOpacity
+                      onPress={() => onEditLevel(skill)}
+                      style={styles.editButton}
+                    >
+                      <Text style={styles.editIcon}>✏️</Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     onPress={() => onRemove(skill)} // ✅ FIX: remove by object

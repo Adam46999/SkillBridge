@@ -131,7 +131,7 @@ export default function HomeScreen() {
   const [teachOpen, setTeachOpen] = useState(false);
 
   const goLogin = useCallback(() => {
-    router.replace("/(auth)/login" as any);
+    router.replace("/(auth)/login");
   }, [router]);
 
   const loadInbox = useCallback(async (token: string) => {
@@ -220,12 +220,12 @@ export default function HomeScreen() {
   };
 
   // Navigation handlers (no behavior change)
-  const handleFindMentor = () => router.push("/find-mentor" as any);
-  const handleGoAvailability = () => router.push("/weekly-availability" as any);
-  const handleGoTeach = () => router.push("/manage-skills-to-teach" as any);
-  const handleGoLearn = () => router.push("/manage-skills-to-learn" as any);
-  const handleGoSessions = () => router.push("/sessions" as any);
-  const handleOpenAllChats = () => router.push("/(tabs)/chats" as any);
+  const handleFindMentor = () => router.push("/find-mentor");
+  const handleGoAvailability = () => router.push("/weekly-availability");
+  const handleGoTeach = () => router.push("/manage-skills-to-teach");
+  const handleGoLearn = () => router.push("/manage-skills-to-learn");
+  const handleGoSessions = () => router.push("/sessions");
+  const handleOpenAllChats = () => router.push("/(tabs)/chats");
 
   const handleOpenChat = (c: ChatInboxItem) => {
     router.push({
@@ -235,7 +235,7 @@ export default function HomeScreen() {
         peerName: c.peer?.fullName || "Chat",
         peerId: c.peer?.id || "",
       },
-    } as any);
+    });
   };
 
   // Derived UI state
@@ -246,12 +246,9 @@ export default function HomeScreen() {
   const streak = user?.streak ?? 0;
 
   const { level, progress } = getLevelFromXp(xp);
-  const slots = user?.availabilitySlots ?? [];
+  const slots = useMemo(() => user?.availabilitySlots ?? [], [user?.availabilitySlots]);
   const totalMin = useMemo(() => calcTotalMinutes(slots), [slots]);
-  const daysSet = useMemo(
-    () => new Set(slots.map((s) => s.dayOfWeek)).size,
-    [slots]
-  );
+  const daysSet = useMemo(() => new Set(slots.map((s) => s.dayOfWeek)).size, [slots]);
   const qualityLabel = availabilityLabelFromMinutes(totalMin);
   const lastUpdatedText = formatLastUpdated(
     sectionStatus.weeklyAvailabilityLastSavedAt

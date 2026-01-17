@@ -94,6 +94,12 @@ export default function SessionRoomScreen() {
   );
 }
 
+export const options = {
+  title: "Session room",
+  headerTitle: "Session room",
+  headerShown: true,
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

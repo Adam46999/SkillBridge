@@ -1,6 +1,6 @@
 // app/weekly-availability/index.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -77,6 +77,13 @@ export default function WeeklyAvailabilityScreen() {
   const router = useRouter();
   const mountedRef = useRef(true);
 
+  const navigation = useNavigation();
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerShown: false });
+    } catch {}
+  }, [navigation]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -110,7 +117,7 @@ export default function WeeklyAvailabilityScreen() {
 
         const token = await AsyncStorage.getItem("token");
         if (!token) {
-          router.replace("/(auth)/login" as any);
+          router.replace("/(auth)/login");
           return;
         }
 
@@ -241,7 +248,7 @@ export default function WeeklyAvailabilityScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -529,3 +536,9 @@ export default function WeeklyAvailabilityScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+export const options = {
+  title: "Weekly availability",
+  headerTitle: "Weekly availability",
+  headerShown: false,
+};

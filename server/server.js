@@ -28,6 +28,17 @@ app.use(cors());
 app.use(express.json());
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+// ephemeral in-memory map to block forwarding ICE candidates for pairs that rejected
+// key format: `${from}->${to}`
+const blockedIcePairs = new Set();
+
+// short-lived map to track recent call-starts to avoid processing immediate rejects
+// key format: `${from}->${to}` -> timestamp (ms)
+const recentCallStarts = new Map();
+// map to record recent call start metadata per conversation+user
+// key: `${conversationId}:${userId}` -> { startTs: number, socketId: string }
+const recentCallEvents = new Map();
+
 const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-fallback-secret-123";
 const PORT = process.env.PORT || 4000;
@@ -261,6 +272,9 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
+
+// make io available to express routes if they need to emit
+app.set("io", io);
 
 // ===== Presence tracking =====
 const userSocketsCount = new Map(); // userId -> count
@@ -539,6 +553,274 @@ io.on("connection", (socket) => {
       return cb?.({ ok: true, message: payload });
     } catch {
       return cb?.({ ok: false, error: "Failed to send" });
+    }
+  });
+
+  // ----- WebRTC signaling (simple relay) -----
+  // Events: webrtc:offer, webrtc:answer, webrtc:ice-candidate
+  socket.on("webrtc:offer", ({ toUserId, sdp }) => {
+    try {
+      const to = String(toUserId || "").trim();
+      console.log(`[webrtc] offer received from ${me} -> ${to}`);
+      if (!to || !sdp) {
+        console.log("[webrtc] offer missing to or sdp");
+        return;
+      }
+      // forward
+      io.to(`user:${to}`).emit("webrtc:offer", { fromUserId: me, sdp });
+      console.log(`[webrtc] offer forwarded to user:${to}`);
+    } catch (err) {
+      console.error("[webrtc] offer handler error:", err);
+    }
+  });
+
+  socket.on("webrtc:answer", ({ toUserId, sdp }) => {
+    try {
+      const to = String(toUserId || "").trim();
+      console.log(`[webrtc] answer received from ${me} -> ${to}`);
+      if (!to || !sdp) {
+        console.log("[webrtc] answer missing to or sdp");
+        return;
+      }
+      // clear any reject block for this pair (answered -> allow candidates)
+      try {
+        const key = `${me}->${to}`;
+        blockedIcePairs.delete(key);
+      } catch {}
+      io.to(`user:${to}`).emit("webrtc:answer", { fromUserId: me, sdp });
+      console.log(`[webrtc] answer forwarded to user:${to}`);
+    } catch (err) {
+      console.error("[webrtc] answer handler error:", err);
+    }
+  });
+
+  socket.on("webrtc:ice-candidate", ({ toUserId, candidate }) => {
+    try {
+      const to = String(toUserId || "").trim();
+      console.log(`[webrtc] ice-candidate received from ${me} -> ${to}`);
+      if (!to || !candidate) {
+        console.log("[webrtc] ice-candidate missing to or candidate");
+        return;
+      }
+      // do not forward ICE candidates if this pair recently rejected the call
+      const key = `${me}->${to}`;
+      if (blockedIcePairs.has(key)) {
+        console.log(`[webrtc] ice-candidate dropped for blocked pair ${key}`);
+        return;
+      }
+
+      io.to(`user:${to}`).emit("webrtc:ice-candidate", {
+        fromUserId: me,
+        candidate,
+      });
+      console.log(`[webrtc] ice-candidate forwarded to user:${to}`);
+    } catch (err) {
+      console.error("[webrtc] ice-candidate handler error:", err);
+    }
+  });
+
+  // ----- optional ringing / reject relay -----
+  socket.on("webrtc:ring", ({ toUserId, conversationId }) => {
+    try {
+      const to = String(toUserId || "").trim();
+      console.log(`[webrtc] ring from ${me} -> ${to}`);
+      if (!to) return;
+      // forward ring and include conversationId if present
+      const convoId = String(conversationId || "").trim();
+      // include the target user id so clients can verify the recipient
+      const payload = convoId
+        ? { fromUserId: me, toUserId: to, conversationId: convoId }
+        : { fromUserId: me, toUserId: to };
+      io.to(`user:${to}`).emit("webrtc:ring", payload);
+      console.log(`[webrtc] ring forwarded to user:${to}`, payload);
+    } catch (err) {
+      console.error("[webrtc] ring handler error:", err);
+    }
+  });
+
+  // ----- call lifecycle logging (create chat message entries) -----
+  socket.on("webrtc:call-start", async ({ conversationId, toUserId }) => {
+    try {
+      // clear any reject block for this pair: call started -> allow ICE
+      try {
+        const to = String(toUserId || "").trim();
+        if (to) blockedIcePairs.delete(`${me}->${to}`);
+      } catch {}
+      const convId = String(conversationId || "").trim();
+      if (!mongoose.Types.ObjectId.isValid(convId)) return;
+      const conv = await Conversation.findById(convId).select("participants").lean();
+      if (!conv) return;
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return;
+
+      // defensive pre-check: ignore duplicate call-starts for same pair emitted rapidly
+      try {
+        const to = String(toUserId || "").trim();
+        if (to) {
+          const key = `${me}->${to}`;
+          const prev = recentCallStarts.get(key);
+          if (prev && Date.now() - prev < 5000) {
+            console.log(`[webrtc] ignoring duplicate call-start (pre) from ${me}->${to} (dt=${Date.now()-prev}ms)`);
+            return;
+          }
+        }
+      } catch {}
+
+      console.log(`[webrtc] call-start from ${me} in conv ${convId}`);
+      const caller = await User.findById(me).select("fullName").lean().catch(() => null);
+      const callerName = (caller && caller.fullName) ? String(caller.fullName) : "Unknown";
+      const text = `${callerName} started a call`;
+      const msg = await Message.create({ conversationId: convId, senderId: me, text, readBy: [me] });
+
+      conv.lastMessageText = String(text).slice(0, 200);
+      conv.lastMessageAt = msg.createdAt;
+      await Conversation.findByIdAndUpdate(convId, { lastMessageText: conv.lastMessageText, lastMessageAt: conv.lastMessageAt }).catch(() => {});
+
+      const payload = {
+        id: String(msg._id),
+        conversationId: convId,
+        senderId: me,
+        text: msg.text,
+        createdAt: msg.createdAt,
+      };
+
+      io.to(convId).emit("message:new", payload);
+      // also emit a call-start signal to the conversation room and optionally to the specific user
+      io.to(convId).emit("webrtc:call-start", { fromUserId: me, conversationId: convId });
+      const to = String(toUserId || "").trim();
+      if (to) io.to(`user:${to}`).emit("webrtc:call-start", { fromUserId: me, conversationId: convId });
+        // record recent call-start for this pair to avoid processing immediate rejects
+        if (to) {
+          const key = `${me}->${to}`;
+          const prev = recentCallStarts.get(key);
+          if (prev && Date.now() - prev < 5000) {
+            console.log(`[webrtc] ignoring duplicate call-start from ${me}->${to} (dt=${Date.now()-prev}ms)`);
+          } else {
+            try {
+              recentCallStarts.set(key, Date.now());
+              // expire after 10s
+              setTimeout(() => recentCallStarts.delete(key), 10 * 1000);
+            } catch {}
+          }
+        }
+
+        // Also record per-conversation call-start event for stronger call-end coalescing
+        try {
+          if (to) {
+            const evKey = `${convId}:${me}`;
+            recentCallEvents.set(evKey, { startTs: Date.now(), socketId: socket.id });
+            setTimeout(() => recentCallEvents.delete(evKey), 15 * 1000);
+          }
+        } catch {}
+      try {
+        if (to) recentCallStarts.set(`${me}->${to}`, Date.now());
+      } catch {}
+    } catch (err) {
+      console.error("[webrtc] call-start handler error:", err);
+    }
+  });
+
+  socket.on("webrtc:call-end", async ({ conversationId, toUserId, durationSec }) => {
+    try {
+      const convId = String(conversationId || "").trim();
+      if (!mongoose.Types.ObjectId.isValid(convId)) return;
+      const conv = await Conversation.findById(convId).select("participants").lean();
+      if (!conv) return;
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return;
+
+      const to = String(toUserId || "").trim();
+      // defensive: ignore call-end events that arrive immediately after a recent call-start
+      // for the same caller<->callee pair (race-condition mitigation). If `toUserId` is
+      // not provided by the sender, check all other conversation participants.
+      try {
+        const candidates = [];
+        const to = String(toUserId || "").trim();
+        if (to) candidates.push(to);
+        const others = (conv.participants || []).map(String).filter((p) => p && p !== me);
+        for (const o of others) {
+          if (!candidates.includes(o)) candidates.push(o);
+        }
+
+        for (const t of candidates) {
+          try {
+            const key1 = `${me}->${t}`;
+            const key2 = `${t}->${me}`;
+            const ts1 = recentCallStarts.get(key1);
+            const ts2 = recentCallStarts.get(key2);
+            const ts = ts1 || ts2;
+            if (ts && Date.now() - ts < 3000) {
+              console.log(`[webrtc] ignoring immediate call-end for ${me}<->${t} (dt=${Date.now()-ts}ms)`);
+              return;
+            }
+            // stronger check: if there is a per-conversation call-start by this user
+            try {
+              const evKey = `${convId}:${me}`;
+              const ev = recentCallEvents.get(evKey);
+              if (ev && ev.startTs && Date.now() - ev.startTs < 2000 && (!durationSec || durationSec <= 1) && ev.socketId === socket.id) {
+                console.log(`[webrtc] ignoring immediate call-end based on recentCallEvents for ${me} in conv ${convId} (dt=${Date.now()-ev.startTs}ms, socket=${socket.id})`);
+                return;
+              }
+            } catch {}
+          } catch {}
+        }
+      } catch {}
+
+      console.log(`[webrtc] call-end from ${me} in conv ${convId} dur=${durationSec} (socket=${socket.id})`);
+      const caller = await User.findById(me).select("fullName").lean().catch(() => null);
+      const callerName = (caller && caller.fullName) ? String(caller.fullName) : "Unknown";
+      const durText = typeof durationSec === "number" ? ` (duration ${Math.floor(durationSec)}s)` : "";
+      const text = `${callerName} ended the call${durText}`;
+      const msg = await Message.create({ conversationId: convId, senderId: me, text, readBy: [me] });
+
+      conv.lastMessageText = String(text).slice(0, 200);
+      conv.lastMessageAt = msg.createdAt;
+      await Conversation.findByIdAndUpdate(convId, { lastMessageText: conv.lastMessageText, lastMessageAt: conv.lastMessageAt }).catch(() => {});
+
+      const payload = {
+        id: String(msg._id),
+        conversationId: convId,
+        senderId: me,
+        text: msg.text,
+        createdAt: msg.createdAt,
+      };
+
+      io.to(convId).emit("message:new", payload);
+      // also emit a call-end signal to the conversation room and optionally to the specific user
+      io.to(convId).emit("webrtc:call-end", { fromUserId: me, conversationId: convId, durationSec, fromSocketId: socket.id });
+      if (to) io.to(`user:${to}`).emit("webrtc:call-end", { fromUserId: me, conversationId: convId, durationSec, fromSocketId: socket.id });
+    } catch (err) {
+      console.error("[webrtc] call-end handler error:", err);
+    }
+  });
+
+  socket.on("webrtc:reject", ({ toUserId }) => {
+    try {
+      const to = String(toUserId || "").trim();
+      console.log(`[webrtc] reject from ${me} -> ${to}`);
+      if (!to) return;
+      // defensive: ignore rejects that arrive immediately after a call-start from same caller
+      try {
+        const key = `${me}->${to}`;
+        const ts = recentCallStarts.get(key);
+        if (ts && Date.now() - ts < 3000) {
+          console.log(`[webrtc] ignoring immediate reject for ${key} (dt=${Date.now()-ts}ms)`);
+          return;
+        }
+      } catch {}
+      // mark pair as blocked for a short period so we don't forward lingering ICE
+      try {
+        const key = `${me}->${to}`;
+        blockedIcePairs.add(key);
+        // clear after 30s
+        setTimeout(() => blockedIcePairs.delete(key), 30 * 1000);
+      } catch {}
+      // include socket id for debugging so we can trace which connection emitted the reject
+      const payload = { fromUserId: me, fromSocketId: socket.id };
+      io.to(`user:${to}`).emit("webrtc:reject", payload);
+      console.log(`[webrtc] reject forwarded to user:${to} (fromSocketId=${socket.id})`);
+    } catch (err) {
+      console.error("[webrtc] reject handler error:", err);
     }
   });
 

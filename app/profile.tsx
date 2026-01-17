@@ -27,7 +27,13 @@ type User = {
   availabilitySlots?: AvailabilitySlot[];
 };
 
-const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+// dayNames not needed here
+
+export const options = {
+  title: "Profile",
+  headerTitle: "Profile",
+  headerShown: true,
+};
 
 function timeToMinutes(t: string) {
   const [h, m] = String(t || "0:0")
@@ -63,7 +69,7 @@ export default function ProfileScreen() {
   const mountedRef = useRef(true);
 
   const goLogin = useCallback(() => {
-    router.replace("/(auth)/login" as any);
+    router.replace("/(auth)/login");
   }, [router]);
 
   const loadUser = useCallback(async () => {
@@ -112,12 +118,9 @@ export default function ProfileScreen() {
     goLogin();
   };
 
-  const slots = user?.availabilitySlots ?? [];
+  const slots = useMemo(() => user?.availabilitySlots ?? [], [user?.availabilitySlots]);
   const totalMin = useMemo(() => calcTotalMinutes(slots), [slots]);
-  const daysSet = useMemo(
-    () => new Set(slots.map((s) => s.dayOfWeek)).size,
-    [slots]
-  );
+  const daysSet = useMemo(() => new Set(slots.map((s) => s.dayOfWeek)).size, [slots]);
 
   if (loading && !user && !errorText) {
     return (
@@ -187,7 +190,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/manage-skills-to-learn" as any)}
+            onPress={() => router.push("/manage-skills-to-learn")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Skills to learn</Text>
@@ -203,7 +206,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/manage-skills-to-teach" as any)}
+            onPress={() => router.push("/manage-skills-to-teach")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Skills to teach</Text>
@@ -219,7 +222,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/weekly-availability" as any)}
+            onPress={() => router.push("/weekly-availability")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Weekly availability</Text>
@@ -235,7 +238,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/find-mentor" as any)}
+            onPress={() => router.push("/find-mentor")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Find mentor</Text>

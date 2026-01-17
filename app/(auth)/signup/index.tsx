@@ -90,7 +90,7 @@ export default function SignupScreen() {
       }
 
       await AsyncStorage.setItem("token", token);
-      router.replace("/(tabs)" as any);
+      router.replace("/(tabs)");
     } catch (err: any) {
       setBannerError(mapApiError(err));
     } finally {
@@ -176,3 +176,9 @@ export default function SignupScreen() {
     </View>
   );
 }
+
+export const options = {
+  title: "Sign up",
+  headerTitle: "Sign up",
+  headerShown: true,
+};

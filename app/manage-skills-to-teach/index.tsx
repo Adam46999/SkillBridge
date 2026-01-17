@@ -5,3 +5,9 @@ import ManageSkillsToTeachScreen from "./ManageSkillsToTeachScreen";
 export default function ManageSkillsToTeachRoute() {
   return <ManageSkillsToTeachScreen />;
 }
+
+export const options = {
+  title: "Manage skills to teach",
+  headerTitle: "Manage skills to teach",
+  headerShown: false,
+};

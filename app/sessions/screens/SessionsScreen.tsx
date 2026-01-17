@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -38,6 +38,13 @@ function sessionMatchesQuery(s: SessionDTO, q: string) {
 
 export default function SessionsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerShown: false });
+    } catch {}
+  }, [navigation]);
 
   const [scope, setScope] = useState<Scope>("upcoming");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

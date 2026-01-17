@@ -1,6 +1,8 @@
 // server/routes/chat.js
 const express = require("express");
 const mongoose = require("mongoose");
+const path = require("path");
+const multer = require("multer");
 
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
@@ -15,6 +17,9 @@ module.exports = (authMiddleware) => {
 
   // protect all chat routes
   router.use(authMiddleware);
+
+  // file upload storage (uploads/ served by server)
+  const upload = multer({ dest: path.join(process.cwd(), "uploads") });
 
   /**
    * GET /api/chat/inbox
@@ -295,6 +300,71 @@ module.exports = (authMiddleware) => {
     } catch (err) {
       console.error("CHAT SEND ERROR:", err?.message || err);
       return res.status(500).json({ error: "Failed to send message" });
+    }
+  });
+
+  /**
+   * POST /api/chat/:conversationId/files
+   * multipart form body with single field `file`
+   * returns: { message }
+   */
+  router.post("/:conversationId/files", upload.single("file"), async (req, res) => {
+    try {
+      const me = String(req.userId || "").trim();
+      const conversationId = String(req.params.conversationId || "").trim();
+      const file = req.file;
+
+      if (!isValidId(me))
+        return res.status(401).json({ error: "Invalid token" });
+      if (!isValidId(conversationId))
+        return res.status(400).json({ error: "Invalid conversationId" });
+      if (!file) return res.status(400).json({ error: "File is required" });
+
+      const conv = await Conversation.findById(conversationId);
+      if (!conv)
+        return res.status(404).json({ error: "Conversation not found" });
+
+      const isMember = (conv.participants || []).map(String).includes(me);
+      if (!isMember) return res.status(403).json({ error: "Not allowed" });
+
+      // build a simple file message (text contains metadata reference)
+      const fileUrl = `/uploads/${file.filename}`;
+      const text = `FILE:${fileUrl}:${file.originalname}:${file.mimetype}`;
+
+      const msg = await Message.create({
+        conversationId,
+        senderId: me,
+        text,
+        readBy: [me],
+      });
+
+      conv.lastMessageText = String(file.originalname || "File").slice(0, 200);
+      conv.lastMessageAt = msg.createdAt;
+      await conv.save();
+
+      const payload = {
+        id: String(msg._id),
+        conversationId,
+        senderId: me,
+        text: msg.text,
+        createdAt: msg.createdAt,
+      };
+
+      // emit to conversation room
+      try {
+        const io = req.app.get("io");
+        // fallback to global 'io' if available
+        if (io && typeof io.to === "function") {
+          io.to(conversationId).emit("message:new", payload);
+        }
+      } catch {
+        // ignore
+      }
+
+      return res.json({ message: payload });
+    } catch (err) {
+      console.error("CHAT FILE UPLOAD ERROR:", err?.message || err);
+      return res.status(500).json({ error: "Failed to upload file" });
     }
   });
 

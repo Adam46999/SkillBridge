@@ -29,25 +29,7 @@ type Params = {
   level?: string;
 };
 
-function StepLabel({
-  active,
-  children,
-}: {
-  active: boolean;
-  children: string;
-}) {
-  return (
-    <Text
-      style={{
-        color: active ? "#FED7AA" : COLORS.muted,
-        fontWeight: "900",
-        fontSize: 12,
-      }}
-    >
-      {children}
-    </Text>
-  );
-}
+// StepLabel removed (was unused)
 
 function InlineError({ text }: { text?: string }) {
   if (!text) return null;
@@ -94,7 +76,7 @@ export default function RequestSessionScreen() {
     return n ? `Requesting a session with ${n}` : "Requesting a session";
   }, [mentorName]);
 
-  const microSub = "3 steps";
+  // microSub removed (unused)
 
   const primaryLabel = useMemo(() => {
     if (form.step === 3) return "Send request";
@@ -128,7 +110,7 @@ export default function RequestSessionScreen() {
     Alert.alert("Sent ✅", "Your request was sent.", [
       {
         text: "Go to sessions",
-        onPress: () => router.replace("/sessions" as any),
+        onPress: () => router.replace("/sessions"),
       },
     ]);
   };

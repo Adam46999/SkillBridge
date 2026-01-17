@@ -250,3 +250,30 @@ export async function getPublicUserProfile(token: string, userId: string): Promi
   });
   return handleResponse(res);
 }
+
+// ---------- UPLOADS (Conversation files) ----------
+export async function uploadConversationFile(
+  token: string,
+  conversationId: string,
+  file: { uri: string; name: string; type?: string }
+) {
+  const fd = new FormData();
+
+  // For React Native / Expo: pass { uri, name, type }
+  // For web: `file` can be a real File object and appended directly.
+  if (typeof (file as any) === "object" && (file as any).uri) {
+    fd.append("file", (file as any));
+  } else {
+    fd.append("file", file as any);
+  }
+
+  const res = await fetch(`${API_URL}/api/chat/${conversationId}/files`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    } as Record<string,string>,
+    body: fd as unknown as BodyInit,
+  });
+
+  return handleResponse(res);
+}

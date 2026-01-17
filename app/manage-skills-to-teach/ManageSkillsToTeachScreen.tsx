@@ -1,5 +1,5 @@
 // app/manage-skills-to-teach/ManageSkillsToTeachScreen.tsx
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -43,6 +43,13 @@ type SheetMode = "quickAdd" | "suggestedAdd" | "addAllSuggested" | "editLevel";
 
 export default function ManageSkillsToTeachScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerShown: false });
+    } catch {}
+  }, [navigation]);
 
   const {
     skills,

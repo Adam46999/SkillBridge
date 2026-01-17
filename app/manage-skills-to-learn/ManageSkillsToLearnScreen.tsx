@@ -1,6 +1,6 @@
 // app/manage-skills-to-learn/ManageSkillsToLearnScreen.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -53,6 +53,14 @@ type SheetMode = "quickAdd" | "suggestedAdd" | "addAllSuggested" | "editLevel";
 
 export default function ManageSkillsToLearnScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  // Ensure header shows a friendly title (overrides file-name title)
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerTitle: "Skills you want to learn" });
+    } catch {}
+  }, [navigation]);
 
   const {
     skills,
@@ -683,6 +691,7 @@ export default function ManageSkillsToLearnScreen() {
                 onClearAll={handleClearAllWithConfirm}
                 filterMode={filterMode}
                 onChangeFilter={setFilterMode}
+                onEditLevel={openEditLevelSheet}
               />
             )}
           </>

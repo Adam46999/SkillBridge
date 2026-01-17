@@ -13,6 +13,8 @@ type ConnStatus = "connected" | "reconnecting" | "disconnected";
 
 let socket: Socket | null = null;
 let currentToken: string | null = null;
+// reference to avoid 'assigned but never used' linter warnings
+void currentToken;
 
 // ✅ keep last joined room so we can re-join on reconnect safely
 let lastJoin: { conversationId: string; peerId: string } | null = null;
@@ -20,14 +22,22 @@ let lastJoin: { conversationId: string; peerId: string } | null = null;
 // ✅ prevent duplicate global connection listeners
 let connListenersBound = false;
 
+// store offers that arrive before a component registers a handler
+export const pendingOffers = new Map<string, any>();
+let offerListenerBound = false;
+
 // ✅ presence watch set (so we can re-watch on reconnect)
 const watchedPresence = new Set<string>();
 
-function normalizeCreatedAt(v: any): string {
+// track last call-start timestamps per conversation to avoid
+// accidental immediate call-end emissions caused by UI races
+const lastCallStartedAt = new Map<string, number>();
+
+function normalizeCreatedAt(v: unknown): string {
   if (!v) return new Date().toISOString();
   if (typeof v === "string") return v;
   if (v instanceof Date) return v.toISOString();
-  const d = new Date(v);
+  const d = new Date(String((v as any) || ""));
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
@@ -72,6 +82,20 @@ export function connectChatSocket(token: string) {
           s.emit("presence:watch", { userId: uid });
         }
       }
+    });
+  }
+
+  // bind a lightweight global offer listener so we can capture offers
+  // that arrive before UI registers handlers (store into pendingOffers)
+  if (!offerListenerBound) {
+    offerListenerBound = true;
+    s.on("webrtc:offer", (payload: unknown) => {
+      try {
+        const p = payload as any;
+        const from = String(p?.fromUserId || "").trim();
+        if (!from) return;
+        pendingOffers.set(from, p?.sdp);
+      } catch {}
     });
   }
 
@@ -125,14 +149,14 @@ export function emitTyping(conversationId: string, isTyping: boolean) {
 export function onNewMessage(handler: (m: RealtimeMessage) => void) {
   const s = socket;
   if (!s) return () => {};
-
-  const wrapped = (payload: any) => {
+  const wrapped = (payload: unknown) => {
+    const p = payload as Record<string, unknown>;
     const msg: RealtimeMessage = {
-      id: String(payload?.id || payload?._id || ""),
-      conversationId: String(payload?.conversationId || ""),
-      senderId: String(payload?.senderId || ""),
-      text: String(payload?.text || ""),
-      createdAt: normalizeCreatedAt(payload?.createdAt),
+      id: String((p as any)?.id || (p as any)?._id || ""),
+      conversationId: String((p as any)?.conversationId || ""),
+      senderId: String((p as any)?.senderId || ""),
+      text: String((p as any)?.text || ""),
+      createdAt: normalizeCreatedAt((p as any)?.createdAt),
     };
     if (!msg.id || !msg.conversationId) return;
     handler(msg);
@@ -147,12 +171,12 @@ export function onPeerTyping(
 ) {
   const s = socket;
   if (!s) return () => {};
-
-  const wrapped = (payload: any) => {
+  const wrapped = (payload: unknown) => {
+    const p = payload as Record<string, unknown>;
     handler({
-      conversationId: String(payload?.conversationId || ""),
-      userId: String(payload?.userId || ""),
-      isTyping: !!payload?.isTyping,
+      conversationId: String((p as any)?.conversationId || ""),
+      userId: String((p as any)?.userId || ""),
+      isTyping: !!(p as any)?.isTyping,
     });
   };
 
@@ -165,12 +189,12 @@ export function onPresenceUpdate(
 ) {
   const s = socket;
   if (!s) return () => {};
-
-  const wrapped = (payload: any) => {
+  const wrapped = (payload: unknown) => {
+    const p = payload as Record<string, unknown>;
     handler({
-      userId: String(payload?.userId || ""),
-      online: !!payload?.online,
-      lastSeen: payload?.lastSeen ? String(payload.lastSeen) : null,
+      userId: String((p as any)?.userId || ""),
+      online: !!(p as any)?.online,
+      lastSeen: (p as any)?.lastSeen ? String((p as any).lastSeen) : null,
     });
   };
 
@@ -184,12 +208,12 @@ export function onReadReceipt(
 ) {
   const s = socket;
   if (!s) return () => {};
-
-  const wrapped = (payload: any) => {
+  const wrapped = (payload: unknown) => {
+    const p = payload as Record<string, unknown>;
     handler({
-      conversationId: String(payload?.conversationId || ""),
-      readerId: String(payload?.readerId || ""),
-      readAt: payload?.readAt ? String(payload.readAt) : undefined,
+      conversationId: String((p as any)?.conversationId || ""),
+      readerId: String((p as any)?.readerId || ""),
+      readAt: (p as any)?.readAt ? String((p as any).readAt) : undefined,
     });
   };
 
@@ -275,24 +299,187 @@ export function sendRealtimeMessage(
     s.emit(
       "message:send",
       { conversationId: cid, text: t },
-      (resp: any = { ok: false, error: "No response" }) => {
-        if (!resp?.ok)
+      (resp: unknown = { ok: false, error: "No response" } as unknown) => {
+        const r = resp as Record<string, unknown> | undefined;
+        if (!r || !(r as any)?.ok)
           return resolve({
             ok: false,
-            error: String(resp?.error || "Failed"),
+            error: String((r as any)?.error || "Failed"),
           });
 
-        const payload = resp?.message || resp;
+        const payload = (r as any)?.message || r;
         const msg: RealtimeMessage = {
-          id: String(payload?.id || payload?._id || "") || `${Date.now()}`,
-          conversationId: String(payload?.conversationId || cid),
-          senderId: String(payload?.senderId || ""),
-          text: String(payload?.text || t),
-          createdAt: normalizeCreatedAt(payload?.createdAt),
+          id: String((payload as any)?.id || (payload as any)?._id || "") || `${Date.now()}`,
+          conversationId: String((payload as any)?.conversationId || cid),
+          senderId: String((payload as any)?.senderId || ""),
+          text: String((payload as any)?.text || t),
+          createdAt: normalizeCreatedAt((payload as any)?.createdAt),
         };
 
         return resolve({ ok: true, message: msg });
       }
     );
   });
+}
+
+// ----- WebRTC signaling helpers (relay through socket.io) -----
+export function sendOffer(toUserId: string, sdp: any) {
+  const s = socket;
+  if (!s) return;
+  s.emit("webrtc:offer", { toUserId: String(toUserId || "").trim(), sdp });
+}
+
+// ringing + reject helpers
+export function sendRing(toUserId: string, conversationId?: string) {
+  const s = socket;
+  if (!s) return;
+  s.emit("webrtc:ring", { toUserId: String(toUserId || "").trim(), conversationId: String(conversationId || "").trim() });
+}
+
+export function sendReject(toUserId: string) {
+  const s = socket;
+  if (!s) return;
+  // debug trace to find unexpected reject origins
+  try {
+    console.log('[webrtc][emit] sendReject', { toUserId });
+    console.trace('[webrtc][emit] sendReject stack');
+  } catch {}
+  s.emit("webrtc:reject", { toUserId: String(toUserId || "").trim() });
+}
+
+export function sendAnswer(toUserId: string, sdp: any) {
+  const s = socket;
+  if (!s) return;
+  s.emit("webrtc:answer", { toUserId: String(toUserId || "").trim(), sdp });
+}
+
+export function sendIceCandidate(toUserId: string, candidate: any) {
+  const s = socket;
+  if (!s) return;
+  s.emit("webrtc:ice-candidate", { toUserId: String(toUserId || "").trim(), candidate });
+}
+
+// Call lifecycle helpers
+export function sendCallStarted(conversationId: string, toUserId?: string) {
+  const s = socket;
+  if (!s) return;
+  try {
+    console.log('[webrtc][emit] sendCallStarted', { conversationId, toUserId });
+    console.trace('[webrtc][emit] sendCallStarted stack');
+  } catch {}
+  try {
+    const key = String(conversationId || "").trim();
+    if (key) lastCallStartedAt.set(key, Date.now());
+  } catch {}
+  s.emit("webrtc:call-start", { conversationId: String(conversationId || "").trim(), toUserId: String(toUserId || "").trim() });
+}
+
+export function sendCallEnded(conversationId: string, toUserId?: string, durationSec?: number) {
+  const s = socket;
+  if (!s) return;
+  try {
+    const key = String(conversationId || "").trim();
+    const now = Date.now();
+    const lastStart = key ? lastCallStartedAt.get(key) || 0 : 0;
+    // If a call-start was emitted very recently (race), and call duration is tiny,
+    // skip emitting this call-end to avoid immediate teardown caused by UI races.
+    if (lastStart && now - lastStart < 2000 && (!durationSec || durationSec < 2)) {
+      console.warn('[webrtc][emit] suppressing sendCallEnded due to recent call-start', { conversationId, toUserId, durationSec, dt: now - lastStart });
+      console.trace('[webrtc][emit] suppressed sendCallEnded stack');
+      return;
+    }
+
+    console.log('[webrtc][emit] sendCallEnded', { conversationId, toUserId, durationSec });
+    console.trace('[webrtc][emit] sendCallEnded stack');
+  } catch {}
+  s.emit("webrtc:call-end", { conversationId: String(conversationId || "").trim(), toUserId: String(toUserId || "").trim(), durationSec });
+}
+
+export function onCallStarted(handler: (p: { fromUserId: string; conversationId: string }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || ""), conversationId: String(p?.conversationId || "") });
+  };
+  s.on("webrtc:call-start", wrapped);
+  return () => s.off("webrtc:call-start", wrapped);
+}
+
+export function onCallEnded(handler: (p: { fromUserId: string; conversationId: string; durationSec?: number }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || ""), conversationId: String(p?.conversationId || ""), durationSec: p?.durationSec });
+  };
+  s.on("webrtc:call-end", wrapped);
+  return () => s.off("webrtc:call-end", wrapped);
+}
+
+export function onOffer(handler: (p: { fromUserId: string; sdp: any }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || ""), sdp: p?.sdp });
+  };
+  s.on("webrtc:offer", wrapped);
+  // if offers arrived earlier, invoke the handler now for them and clear buffer
+  try {
+    for (const [from, sdp] of pendingOffers.entries()) {
+      try {
+        handler({ fromUserId: String(from), sdp });
+      } catch {}
+      // consume the buffered offer so subsequent handlers don't recreate peers
+      try {
+        pendingOffers.delete(from);
+      } catch {}
+    }
+  } catch {}
+  return () => s.off("webrtc:offer", wrapped);
+}
+
+export function onRing(handler: (p: { fromUserId: string; toUserId?: string; conversationId?: string }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || ""), toUserId: p?.toUserId ? String(p?.toUserId) : undefined, conversationId: p?.conversationId ? String(p?.conversationId) : undefined });
+  };
+  s.on("webrtc:ring", wrapped);
+  return () => s.off("webrtc:ring", wrapped);
+}
+
+export function onReject(handler: (p: { fromUserId: string }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || "") });
+  };
+  s.on("webrtc:reject", wrapped);
+  return () => s.off("webrtc:reject", wrapped);
+}
+
+export function onAnswer(handler: (p: { fromUserId: string; sdp: any }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || ""), sdp: p?.sdp });
+  };
+  s.on("webrtc:answer", wrapped);
+  return () => s.off("webrtc:answer", wrapped);
+}
+
+export function onIceCandidate(handler: (p: { fromUserId: string; candidate: any }) => void) {
+  const s = socket;
+  if (!s) return () => {};
+  const wrapped = (payload: unknown) => {
+    const p = payload as any;
+    handler({ fromUserId: String(p?.fromUserId || ""), candidate: p?.candidate });
+  };
+  s.on("webrtc:ice-candidate", wrapped);
+  return () => s.off("webrtc:ice-candidate", wrapped);
 }

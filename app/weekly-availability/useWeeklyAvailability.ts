@@ -138,7 +138,7 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
         // ✅ keep consistent with your auth group routes
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -191,7 +191,7 @@ export function useWeeklyAvailability(): UseWeeklyAvailabilityResult {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return false;
       }
 

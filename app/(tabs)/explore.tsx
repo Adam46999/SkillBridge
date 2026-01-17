@@ -10,6 +10,12 @@ export default function ExploreScreen() {
   );
 }
 
+export const options = {
+  title: "Explore",
+  headerTitle: "Explore",
+  headerShown: true,
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

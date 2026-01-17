@@ -34,6 +34,10 @@ import {
   onPeerTyping,
   onPresenceUpdate,
   onReadReceipt,
+  onCallStarted,
+  onCallEnded,
+  onRing,
+  onReject,
   sendRealtimeMessage,
   unwatchPresence,
   watchPresence,
@@ -41,6 +45,7 @@ import {
 } from "../../../lib/chat/socket";
 
 import ChatHeader from "./(components)/ChatHeader";
+import CallControls from "./CallControls";
 import ChatInput from "./(components)/ChatInput";
 import MessagesList from "./(components)/MessagesList";
 
@@ -67,6 +72,7 @@ export default function ConversationScreen() {
     conversationId?: string;
     peerName?: string;
     peerId?: string;
+    initialRingingFrom?: string;
   }>();
 
   const convId = String(params.conversationId || "").trim();
@@ -134,7 +140,7 @@ export default function ConversationScreen() {
 
     const token = await AsyncStorage.getItem("token");
     if (!token) {
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
       return () => {};
     }
 
@@ -143,6 +149,16 @@ export default function ConversationScreen() {
     const cleanupFns: ((() => void) | undefined)[] = [];
 
     try {
+      // if layout passed an initial ringing param, pre-open call UI
+        try {
+          const initFrom = String(params.initialRingingFrom || "").trim();
+          if (initFrom && peerId && String(initFrom) === String(peerId)) {
+            setCallPeerIdState(initFrom);
+            setInitialRingingFrom(initFrom);
+            setShowCallControls(true);
+          }
+        } catch {}
+
       const me = await getMe(token);
       if (!mountedRef.current) return () => {};
 
@@ -232,6 +248,59 @@ export default function ConversationScreen() {
         })
       );
 
+      // WebRTC: SDP offers will be handled by CallControls directly (avoid duplicate handlers)
+
+      // also handle ring events (in case ring arrives before offer)
+      try {
+        const offR = onRing((p) => {
+          const from = String(p.fromUserId || "").trim();
+          if (!from) return;
+          if (peerId && from !== String(peerId)) return;
+          setCallPeerIdState(from);
+          setInitialRingingFrom(from);
+          setShowCallControls(true);
+        });
+        cleanupFns.push(offR);
+      } catch {}
+
+      // also react to call-start from server (in case it's emitted)
+      try {
+        const offStart = onCallStarted((p) => {
+          const from = String(p.fromUserId || "").trim();
+          if (!from) return;
+          if (peerId && from !== String(peerId)) return;
+          setCallPeerIdState(from);
+          setShowCallControls(true);
+        });
+        cleanupFns.push(offStart);
+      } catch {}
+
+      // react to call-end to ensure UI closes on both sides
+      try {
+        const offEnd = onCallEnded((p) => {
+          const from = String(p.fromUserId || "").trim();
+          if (!from) return;
+          if (peerId && from !== String(peerId)) return;
+          setShowCallControls(false);
+          setCallPeerIdState(null);
+          setInitialRingingFrom(null);
+        });
+        cleanupFns.push(offEnd);
+      } catch {}
+
+      // handle remote reject (callee declined) to close caller UI
+      try {
+        const offRej = onReject((p) => {
+          const from = String(p.fromUserId || "").trim();
+          if (!from) return;
+          if (peerId && from !== String(peerId)) return;
+          // if caller sees reject from callee, close call UI
+          setShowCallControls(false);
+          setCallPeerIdState(null);
+        });
+        cleanupFns.push(offRej);
+      } catch {}
+
       void safeMarkRead(token);
 
       return () => {
@@ -244,7 +313,7 @@ export default function ConversationScreen() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [convId, peerId, router, safeMarkRead]);
+  }, [convId, peerId, router, safeMarkRead, params.initialRingingFrom]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -305,7 +374,7 @@ export default function ConversationScreen() {
 
     const token = await AsyncStorage.getItem("token");
     if (!token) {
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
       return;
     }
 
@@ -335,7 +404,7 @@ export default function ConversationScreen() {
 
   const openPeerProfile = useCallback(() => {
     if (!peerId) return;
-    router.push(`/mentor/${peerId}` as any);
+    router.push(`/mentor/${peerId}`);
   }, [peerId, router]);
 
   const requestSessionFromChat = useCallback(() => {
@@ -345,6 +414,15 @@ export default function ConversationScreen() {
       params: { mentorId: peerId, mentorName: peerName },
     });
   }, [peerId, peerName, router]);
+
+  const [showCallControls, setShowCallControls] = useState(false);
+  const [callPeerIdState, setCallPeerIdState] = useState<string | null>(null);
+  const [initialRingingFrom, setInitialRingingFrom] = useState<string | null>(null);
+
+  const startCall = useCallback(() => {
+    setCallPeerIdState(peerId || null);
+    setShowCallControls(true);
+  }, [peerId]);
 
   if (loading) {
     return (
@@ -381,6 +459,7 @@ export default function ConversationScreen() {
         onPressTitle={openPeerProfile}
         onPressAvatar={openPeerProfile}
         onRequestSession={requestSessionFromChat}
+        onStartCall={startCall}
       />
 
       <MessagesList
@@ -399,6 +478,28 @@ export default function ConversationScreen() {
         onChange={setText}
         onSend={send}
       />
+
+      {showCallControls && (
+        <View style={{ position: "absolute", bottom: 80, left: 12, right: 12 }}>
+          <CallControls
+            peerId={callPeerIdState ?? peerId}
+            peerName={peerName}
+            conversationId={convId}
+            initialRingingFrom={initialRingingFrom ?? undefined}
+            onClose={() => {
+              setShowCallControls(false);
+              setCallPeerIdState(null);
+              setInitialRingingFrom(null);
+            }}
+          />
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
+
+export const options = {
+  title: "Conversation",
+  headerTitle: "Conversation",
+  headerShown: true,
+};

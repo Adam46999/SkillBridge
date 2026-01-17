@@ -26,6 +26,12 @@ type FieldErrors = {
   password?: string;
 };
 
+export const options = {
+  title: "Sign in",
+  headerTitle: "Sign in",
+  headerShown: true,
+};
+
 export default function LoginScreen() {
   const router = useRouter();
 
@@ -59,7 +65,7 @@ export default function LoginScreen() {
 
         await getMe(token);
         if (!mounted) return;
-        router.replace("/(tabs)" as any);
+        router.replace("/(tabs)");
       } catch {
         await AsyncStorage.removeItem("token");
         if (mounted) setCheckingSession(false);
@@ -120,7 +126,7 @@ export default function LoginScreen() {
       }
 
       await AsyncStorage.setItem("token", token);
-      router.replace("/(tabs)" as any);
+      router.replace("/(tabs)");
     } catch (err: any) {
       setBannerError(mapApiError(err));
       setPassword("");

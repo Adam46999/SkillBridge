@@ -1,6 +1,6 @@
 // app/mentor/[id].tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import { getOrCreateConversation } from "../../lib/chat/api";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -116,6 +116,13 @@ function toMentorVM(p: PublicUserProfile): MentorVM {
 
 export default function MentorProfileScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerShown: false });
+    } catch {}
+  }, [navigation]);
   const params = useLocalSearchParams();
 
   const mentorIdRaw = params?.id;
@@ -143,7 +150,7 @@ export default function MentorProfileScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -214,7 +221,7 @@ export default function MentorProfileScreen() {
         mentorId: mentor.id,
         mentorName: mentor.fullName,
       },
-    } as any);
+    });
   };
 
   const handleMessage = async () => {
@@ -223,7 +230,7 @@ export default function MentorProfileScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -447,6 +454,12 @@ export default function MentorProfileScreen() {
     </View>
   );
 }
+
+export const options = {
+  title: "Mentor profile",
+  headerTitle: "Mentor profile",
+  headerShown: false,
+};
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },

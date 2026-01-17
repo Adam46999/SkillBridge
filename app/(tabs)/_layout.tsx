@@ -17,7 +17,7 @@ export default function TabLayout() {
         if (!mounted) return;
 
         if (!token) {
-          router.replace("/(auth)/login" as any);
+          router.replace("/(auth)/login");
           return;
         }
       } finally {
