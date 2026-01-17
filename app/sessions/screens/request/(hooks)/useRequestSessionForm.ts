@@ -24,6 +24,7 @@ export type RequestSessionFormInit = {
   prefillSkill?: string;
   prefillLevel?: string;
 };
+export type Step = 1 | 2 | 3;
 
 function normalizeStr(v: any) {
   return String(v ?? "").trim();
@@ -55,7 +56,7 @@ function buildISO(dateYYYYMMDD: string, timeHHMM: string) {
 }
 
 export function useRequestSessionForm(init: RequestSessionFormInit) {
-  const [step, setStep] = useState<number>(1);
+const [step, setStep] = useState<Step>(1);
 
   const [skill, setSkill] = useState<string>(normalizeStr(init.prefillSkill));
   const [level, setLevel] = useState<string>(normalizeStr(init.prefillLevel));
@@ -97,7 +98,7 @@ export function useRequestSessionForm(init: RequestSessionFormInit) {
     return true; // step 3 always allows submit button (hook submit validates)
   }, [step, errors]);
 
-  const touchStep = useCallback((s: number) => {
+const touchStep = useCallback((s: Step) => {
     setTouched((prev) => {
       if (s === 1) return { ...prev, topic: true };
       if (s === 2) return { ...prev, schedule: true };
@@ -106,13 +107,14 @@ export function useRequestSessionForm(init: RequestSessionFormInit) {
     });
   }, []);
 
-  const next = useCallback(() => {
-    setStep((p) => Math.min(3, p + 1));
-  }, []);
+ const next = useCallback(() => {
+  setStep((p) => (p === 1 ? 2 : p === 2 ? 3 : 3));
+}, []);
 
-  const back = useCallback(() => {
-    setStep((p) => Math.max(1, p - 1));
-  }, []);
+const back = useCallback(() => {
+  setStep((p) => (p === 3 ? 2 : p === 2 ? 1 : 1));
+}, []);
+
 
   const reviewScheduleText = useMemo(() => {
     const d = normalizeStr(date);

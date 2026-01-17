@@ -1,6 +1,6 @@
 // app/sessions/components/SessionCard.tsx
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -85,6 +85,7 @@ function canCompleteNow(iso?: string | null) {
     return { ok: false, reason: "Completion window expired" };
   return { ok: true };
 }
+
 function getId(v: any) {
   if (!v) return "";
   if (typeof v === "string") return v.trim();
@@ -173,6 +174,20 @@ export default function SessionCard({
   const [rateValue, setRateValue] = useState("5");
   const [rateFeedback, setRateFeedback] = useState("");
 
+  // ✅ FIX (no behavior change): stable id fallback
+  const sessionId =
+    getId((session as any)?._id) ||
+    getId((session as any)?.id) ||
+    getId((session as any)?.sessionId);
+
+  const [uiStatus, setUiStatus] = useState<SessionStatus>(
+    (session.status as SessionStatus) || "requested"
+  );
+
+  useEffect(() => {
+    setUiStatus((session.status as SessionStatus) || "requested");
+  }, [session.status]);
+
   const timeReached = useMemo(
     () => isTimeReached(session.scheduledAt),
     [session.scheduledAt]
@@ -195,7 +210,13 @@ export default function SessionCard({
   const learnerId =
     getId((session as any).learnerId) || getId((session as any).learner);
 
-  console.log("DBG", { myId, mentorId, learnerId, status: session.status });
+  console.log("DBG", {
+    myId,
+    mentorId,
+    learnerId,
+    status: session.status,
+    sessionId,
+  });
 
   const isMentor = !!myId && mentorId === myId;
   const isLearner = !!myId && learnerId === myId;
@@ -208,37 +229,38 @@ export default function SessionCard({
   const learnerJoined = !!learnerId && joinedBy.includes(learnerId);
 
   // ✅ Rules (UI mirrors backend)
-  const canAcceptReject =
-    isMentor && session.status === "requested" && !timeReached;
+  const canAcceptReject = isMentor && uiStatus === "requested" && !timeReached;
 
   const canCancel =
     (isMentor || isLearner) &&
-    (session.status === "requested" || session.status === "accepted");
+    (uiStatus === "requested" || uiStatus === "accepted");
 
   const canJoin =
-    (isMentor || isLearner) && session.status === "accepted" && joinCheck.ok;
+    (isMentor || isLearner) && uiStatus === "accepted" && joinCheck.ok;
 
   const canComplete =
-    isMentor &&
-    session.status === "accepted" &&
-    completeCheck.ok &&
-    mentorJoined;
+    isMentor && uiStatus === "accepted" && completeCheck.ok && mentorJoined;
 
   const canRate =
     (isMentor || isLearner) &&
-    session.status === "completed" &&
+    uiStatus === "completed" &&
     !(session as any).rating;
 
-  // ✅ Delete = Hide (only for final statuses)
   const canHide =
     (isMentor || isLearner) &&
-    (session.status === "rejected" ||
-      session.status === "cancelled" ||
-      session.status === "completed");
+    (uiStatus === "rejected" ||
+      uiStatus === "cancelled" ||
+      uiStatus === "completed");
 
   const setStatus = async (next: SessionStatus) => {
     if (!token) {
       Alert.alert("Not logged in", "Please login again.");
+      return;
+    }
+
+    // ✅ no behavior change; just prevents broken call
+    if (!sessionId) {
+      Alert.alert("Missing id", "This session has no id.");
       return;
     }
 
@@ -270,7 +292,11 @@ export default function SessionCard({
 
     try {
       setBusy(true);
-      await updateSessionStatus(token, session._id, next);
+      await updateSessionStatus(token, sessionId, next);
+
+      // ✅ تحديث محلي فوري للكرت (NO side effects)
+      setUiStatus(next);
+
       await onChanged();
     } catch (e: any) {
       Alert.alert("Failed", e?.message || "Action failed");
@@ -281,9 +307,26 @@ export default function SessionCard({
 
   const doJoin = async () => {
     if (!token) return Alert.alert("Not logged in", "Please login again.");
+    console.log("JOIN CLICK", { sessionId, raw: session });
+
+    if (!sessionId) return Alert.alert("Missing id", "This session has no id.");
+
     try {
       setBusy(true);
-      await joinSession(token, session._id);
+
+      // 1) حاول سجّل join بالسيرفر (اذا نافذة الجوين مسموحة)
+      // لو فشل (too early / expired / already joined) ما بنوقف التجربة
+      try {
+        await joinSession(token, sessionId);
+      } catch (e: any) {
+        // ignore join errors here; room will still open
+        console.log("JoinSession skipped:", e?.message);
+      }
+
+      // 2) افتح غرفة السيشن
+      router.push(`/sessions/room/${sessionId}`);
+
+      // 3) sync
       await onChanged();
     } catch (e: any) {
       Alert.alert("Join failed", e?.message || "Join failed");
@@ -294,6 +337,7 @@ export default function SessionCard({
 
   const doSmartDelete = async () => {
     if (!token) return Alert.alert("Not logged in", "Please login again.");
+    if (!sessionId) return Alert.alert("Missing id", "This session has no id.");
 
     const title = "Delete session";
 
@@ -325,10 +369,10 @@ export default function SessionCard({
     }
     try {
       setBusy(true);
-      await deleteSessionSmart(token, session._id);
+      await deleteSessionSmart(token, sessionId);
 
       // ✅ NEW: يخفيها فوراً من قدامك
-      onDeletedLocal?.(session._id);
+      onDeletedLocal?.(sessionId);
 
       // ✅ خليه عشان يعمل sync بعدين
       await onChanged();
@@ -341,6 +385,8 @@ export default function SessionCard({
 
   const submitRate = async () => {
     if (!token) return Alert.alert("Not logged in", "Please login again.");
+    if (!sessionId) return Alert.alert("Missing id", "This session has no id.");
+
     const n = Number(rateValue);
     if (!Number.isFinite(n) || n < 1 || n > 5) {
       Alert.alert("Invalid rating", "Please choose 1 to 5.");
@@ -349,7 +395,7 @@ export default function SessionCard({
 
     try {
       setBusy(true);
-      await rateSession(token, session._id, {
+      await rateSession(token, sessionId, {
         rating: n,
         feedback: rateFeedback,
       });
@@ -364,7 +410,7 @@ export default function SessionCard({
 
   const title = `${session.skill} • ${session.level || "Not specified"}`;
   const timeLine = formatSessionDateTime(session.scheduledAt);
-  const badge = statusBadge(session.status);
+  const badge = statusBadge(uiStatus);
   const badgeText = typeof badge === "string" ? badge : badge.label;
   const otherName = isMentor
     ? (session as any)?.learner?.fullName ||
@@ -381,7 +427,7 @@ export default function SessionCard({
       "User";
 
   const cancelNotice = useMemo(() => {
-    const st = String(session.status || "").toLowerCase();
+    const st = String(uiStatus || "").toLowerCase();
     if (st !== "cancelled" && st !== "rejected") return "";
 
     const dn = String((session as any)?.deleteNotice || "").trim();
@@ -439,9 +485,12 @@ export default function SessionCard({
             <ActionBtn
               label="Accept"
               kind="primary"
-              onPress={() => setStatus("accepted")}
+              onPress={() => {
+                setStatus("accepted");
+              }}
               disabled={busy}
             />
+
             <ActionBtn
               label="Reject"
               kind="danger"
@@ -469,7 +518,7 @@ export default function SessionCard({
           />
         )}
 
-        {session.status === "accepted" && !canJoin && (
+        {uiStatus === "accepted" && !canJoin && (
           <ActionBtn
             label={joinCheck.ok ? "Join" : "Join (not available)"}
             kind="neutral"
@@ -487,7 +536,7 @@ export default function SessionCard({
           />
         )}
 
-        {session.status === "accepted" && !canComplete && timeReached && (
+        {uiStatus === "accepted" && !canComplete && timeReached && (
           <ActionBtn
             label={
               mentorJoined ? "Complete (blocked)" : "Complete (join first)"

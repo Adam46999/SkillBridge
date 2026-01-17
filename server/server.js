@@ -8,6 +8,7 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Server } = require("socket.io");
+const path = require("path");
 
 const User = require("./models/User");
 const Conversation = require("./models/Conversation");
@@ -25,6 +26,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 const MONGO_URI = process.env.MONGO_URI;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-fallback-secret-123";
