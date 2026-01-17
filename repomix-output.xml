@@ -121,7 +121,6 @@ app/sessions/api/sessionsApi.ts
 app/sessions/components/SessionCard.tsx
 app/sessions/index.tsx
 app/sessions/request.tsx
-app/sessions/room/[id].tsx
 app/sessions/room/[id]/components/ChatPanel.tsx
 app/sessions/room/[id]/components/FilesPanel.tsx
 app/sessions/room/[id]/components/MessageBubble.tsx
@@ -132,6 +131,7 @@ app/sessions/room/[id]/hooks/useSessionRoom.ts
 app/sessions/room/[id]/index.tsx
 app/sessions/room/[id]/utils/presence.ts
 app/sessions/room/[id]/utils/zoom.ts
+app/sessions/room/[id]old.tsx
 app/sessions/screens/(components)/SessionsEmptyState.tsx
 app/sessions/screens/(components)/SessionsHeader.tsx
 app/sessions/screens/(components)/SessionsRowRenderer.tsx
@@ -215,871 +215,6 @@ tsconfig.json
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="app/sessions/room/[id].tsx">
-import * as DocumentPicker from "expo-document-picker";
-import { useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Linking,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-
-import type { SessionDTO } from "../api/sessionsApi";
-import {
-  getSessionById,
-  listSessionChat,
-  listSessionFiles,
-  sendSessionChat,
-  updateSessionStatus,
-  uploadSessionFile,
-} from "../api/sessionsApi";
-
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_URL } from "../../../lib/api";
-
-type ChatMsg = {
-  _id: string;
-  senderId: string;
-  text: string;
-  createdAt: string;
-};
-
-type SessionFile = {
-  _id: string;
-  uploaderId: string;
-  name: string;
-  url: string;
-  createdAt: string;
-};
-
-async function getToken() {
-  // عدّل المفتاح إذا عندك اسم ثاني للتوكن
-  return (await AsyncStorage.getItem("token")) || null;
-}
-
-export default function SessionRoomScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const sessionId = String(id || "").trim();
-
-  const [token, setToken] = useState<string | null>(null);
-
-  const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<SessionDTO | null>(null);
-
-  const [chatLoading, setChatLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [text, setText] = useState("");
-
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [files, setFiles] = useState<SessionFile[]>([]);
-
-  const [busy, setBusy] = useState(false);
-
-  const flatRef = useRef<FlatList>(null);
-
-  const zoomUrl = useMemo(() => (session as any)?.zoomJoinUrl || "", [session]);
-
-  async function loadAll(tk: string) {
-    try {
-      setLoading(true);
-      const s = await getSessionById(tk, sessionId);
-      setSession(s);
-
-      setChatLoading(true);
-      const chat = await listSessionChat(tk, sessionId);
-      setMessages(chat);
-
-      setFilesLoading(true);
-      const fl = await listSessionFiles(tk, sessionId);
-      setFiles(fl);
-    } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Failed to load session room");
-    } finally {
-      setLoading(false);
-      setChatLoading(false);
-      setFilesLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    (async () => {
-      const tk = await getToken();
-      setToken(tk);
-      if (!tk) {
-        setLoading(false);
-        Alert.alert("Not logged in", "Please login again.");
-        return;
-      }
-      if (!sessionId) {
-        setLoading(false);
-        Alert.alert("Missing id", "No session id in route.");
-        return;
-      }
-      await loadAll(tk);
-    })();
-  }, [sessionId]);
-
-  const onSend = async () => {
-    if (!token) return;
-    const t = text.trim();
-    if (!t) return;
-
-    try {
-      setBusy(true);
-      const msg = await sendSessionChat(token, sessionId, t);
-      setMessages((prev) => [...prev, msg]);
-      setText("");
-
-      // scroll
-      setTimeout(() => flatRef.current?.scrollToEnd?.({ animated: true }), 50);
-    } catch (e: any) {
-      Alert.alert("Send failed", e?.message || "Send failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onPickUpload = async () => {
-    if (!token) return;
-
-    try {
-      const res = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-
-      if (res.canceled) return;
-      const file = res.assets?.[0];
-      if (!file?.uri) return;
-
-      setBusy(true);
-      const uploaded = await uploadSessionFile(token, sessionId, {
-        uri: file.uri,
-        name: file.name || "file",
-        mimeType: file.mimeType || "application/octet-stream",
-      });
-
-      setFiles((prev) => [uploaded, ...prev]);
-    } catch (e: any) {
-      Alert.alert("Upload failed", e?.message || "Upload failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onEnterZoom = async () => {
-    const url = String(zoomUrl || "").trim();
-    if (!url) {
-      Alert.alert("No Zoom link", "This session has no zoomJoinUrl yet.");
-      return;
-    }
-    const ok = await Linking.canOpenURL(url);
-    if (!ok) return Alert.alert("Cannot open", "Invalid Zoom link.");
-    Linking.openURL(url);
-  };
-
-  const onEndMeeting = async () => {
-    if (!token || !sessionId) return;
-
-    const ok = await new Promise<boolean>((resolve) => {
-      Alert.alert("End meeting", "This will mark the session as completed.", [
-        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-        { text: "End", style: "destructive", onPress: () => resolve(true) },
-      ]);
-    });
-    if (!ok) return;
-
-    try {
-      setBusy(true);
-      const updated = await updateSessionStatus(token, sessionId, "completed");
-      setSession(updated);
-      Alert.alert("Done", "Session marked as completed.");
-    } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Failed to complete session");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#0B1220", padding: 16 }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (!session) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#0B1220", padding: 16 }}>
-        <Text style={{ color: "#E2E8F0" }}>Session not found.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ flex: 1, backgroundColor: "#0B1220", padding: 14, gap: 12 }}>
-      {/* Header */}
-      <View
-        style={{
-          borderWidth: 1,
-          borderColor: "#1F2937",
-          borderRadius: 16,
-          padding: 12,
-          gap: 6,
-        }}
-      >
-        <Text style={{ color: "#E2E8F0", fontWeight: "900", fontSize: 16 }}>
-          {session.skill} • {session.level}
-        </Text>
-        <Text style={{ color: "#94A3B8" }}>{session.scheduledAt}</Text>
-        <Text style={{ color: "#64748B" }}>Status: {session.status}</Text>
-
-        {/* Actions */}
-        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-          <Pressable
-            onPress={onEnterZoom}
-            disabled={busy}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              backgroundColor: "#10B981",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#0B1220", fontWeight: "900" }}>
-              Enter Zoom
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={onEndMeeting}
-            disabled={busy}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              backgroundColor: "#EF4444",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#0B1220", fontWeight: "900" }}>
-              End Meeting
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => token && loadAll(token)}
-            disabled={busy}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              backgroundColor: "#334155",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Refresh</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Files */}
-      <View
-        style={{
-          borderWidth: 1,
-          borderColor: "#1F2937",
-          borderRadius: 16,
-          padding: 12,
-          gap: 10,
-          flexShrink: 0,
-        }}
-      >
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Files</Text>
-
-          <Pressable
-            onPress={onPickUpload}
-            disabled={busy}
-            style={{
-              paddingVertical: 8,
-              paddingHorizontal: 10,
-              borderRadius: 12,
-              backgroundColor: "#334155",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>Upload</Text>
-          </Pressable>
-        </View>
-
-        {filesLoading ? (
-          <ActivityIndicator />
-        ) : files.length === 0 ? (
-          <Text style={{ color: "#64748B" }}>No files yet.</Text>
-        ) : (
-          files.slice(0, 6).map((f) => (
-            <Pressable
-              key={f._id}
-              onPress={() => {
-                const u = String(f.url || "");
-                const full = u.startsWith("http") ? u : `${API_URL}${u}`;
-                Linking.openURL(full);
-              }}
-              style={{
-                padding: 10,
-                borderRadius: 12,
-                backgroundColor: "#0F172A",
-                borderWidth: 1,
-                borderColor: "#1F2937",
-              }}
-            >
-              <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>
-                {f.name}
-              </Text>
-              <Text style={{ color: "#64748B", marginTop: 2 }}>
-                Tap to open
-              </Text>
-            </Pressable>
-          ))
-        )}
-      </View>
-
-      {/* Chat */}
-      <View
-        style={{
-          flex: 1,
-          borderWidth: 1,
-          borderColor: "#1F2937",
-          borderRadius: 16,
-          padding: 12,
-          gap: 10,
-        }}
-      >
-        <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Chat</Text>
-
-        {chatLoading ? (
-          <ActivityIndicator />
-        ) : (
-          <FlatList
-            ref={flatRef}
-            data={messages}
-            keyExtractor={(m) => m._id}
-            renderItem={({ item }) => (
-              <View style={{ paddingVertical: 6 }}>
-                <Text style={{ color: "#94A3B8", fontSize: 12 }}>
-                  {item.senderId}
-                </Text>
-                <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>
-                  {item.text}
-                </Text>
-              </View>
-            )}
-          />
-        )}
-
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder="Type..."
-            placeholderTextColor="#64748B"
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: "#1F2937",
-              borderRadius: 12,
-              padding: 10,
-              color: "#E2E8F0",
-            }}
-          />
-          <Pressable
-            onPress={onSend}
-            disabled={busy}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              backgroundColor: "#10B981",
-              opacity: busy ? 0.6 : 1,
-              justifyContent: "center",
-            }}
-          >
-            <Text style={{ color: "#0B1220", fontWeight: "900" }}>Send</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-</file>
-
-<file path="app/sessions/room/[id]/components/ChatPanel.tsx">
-import { useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
-import { useSessionChat } from "../hooks/useSessionChat";
-import MessageBubble from "./MessageBubble";
-
-export default function ChatPanel({
-  sessionId,
-  myId,
-}: {
-  sessionId: string;
-  myId: string;
-}) {
-  const { messages, send } = useSessionChat(sessionId);
-  const [text, setText] = useState("");
-
-  return (
-    <View style={{ flex: 1 }}>
-      <FlatList
-        data={messages}
-        keyExtractor={(m) => m._id}
-        renderItem={({ item }) => (
-          <MessageBubble msg={item} mine={item.senderId === myId} />
-        )}
-      />
-
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          style={{ flex: 1, backgroundColor: "#111", color: "#fff" }}
-        />
-        <Pressable
-          onPress={() => {
-            send(text);
-            setText("");
-          }}
-        >
-          <Text style={{ color: "#10B981" }}>Send</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-</file>
-
-<file path="app/sessions/room/[id]/components/FilesPanel.tsx">
-import { Pressable, Text, View } from "react-native";
-import { useSessionFiles } from "../hooks/useSessionFiles";
-
-export default function FilesPanel({ sessionId }: { sessionId: string }) {
-  const { files, upload } = useSessionFiles(sessionId);
-
-  return (
-    <View>
-      <Text style={{ color: "#fff", fontWeight: "700" }}>Files</Text>
-
-      {files.map((f) => (
-        <Text key={f._id} style={{ color: "#94A3B8" }}>
-          {f.name}
-        </Text>
-      ))}
-
-      <Pressable onPress={upload}>
-        <Text style={{ color: "#10B981" }}>Upload</Text>
-      </Pressable>
-    </View>
-  );
-}
-</file>
-
-<file path="app/sessions/room/[id]/components/MessageBubble.tsx">
-import { Text, View } from "react-native";
-
-export default function MessageBubble({
-  msg,
-  mine,
-}: {
-  msg: any;
-  mine: boolean;
-}) {
-  return (
-    <View
-      style={{
-        alignSelf: mine ? "flex-end" : "flex-start",
-        backgroundColor: mine ? "#10B981" : "#1F2937",
-        padding: 10,
-        borderRadius: 12,
-        marginVertical: 4,
-        maxWidth: "80%",
-      }}
-    >
-      <Text style={{ color: "#fff" }}>{msg.text}</Text>
-    </View>
-  );
-}
-</file>
-
-<file path="app/sessions/room/[id]/components/RoomHeader.tsx">
-import React, { useState } from "react";
-import { Alert, Linking, Pressable, Text, View } from "react-native";
-
-import type { SessionDTO } from "../../api/sessionsApi";
-import { updateSessionStatus } from "../../api/sessionsApi";
-
-type Props = {
-  session: SessionDTO;
-  token: string;
-  onSessionUpdated: () => void;
-};
-
-export default function RoomHeader({
-  session,
-  token,
-  onSessionUpdated,
-}: Props) {
-  const [busy, setBusy] = useState(false);
-
-  const zoomUrl = String((session as any)?.zoomJoinUrl || "").trim();
-
-  const onEnterZoom = async () => {
-    if (!zoomUrl) {
-      Alert.alert("No Zoom link", "This session has no Zoom link.");
-      return;
-    }
-
-    const can = await Linking.canOpenURL(zoomUrl);
-    if (!can) {
-      Alert.alert("Cannot open Zoom", "Invalid Zoom link.");
-      return;
-    }
-
-    Linking.openURL(zoomUrl);
-  };
-
-  const onEndMeeting = async () => {
-    const ok = await new Promise<boolean>((resolve) => {
-      Alert.alert("End meeting", "This will mark the session as completed.", [
-        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-        {
-          text: "End",
-          style: "destructive",
-          onPress: () => resolve(true),
-        },
-      ]);
-    });
-
-    if (!ok) return;
-
-    try {
-      setBusy(true);
-      await updateSessionStatus(token, session._id, "completed");
-      await onSessionUpdated();
-    } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Failed to end meeting");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <View
-      style={{
-        borderWidth: 1,
-        borderColor: "#1F2937",
-        borderRadius: 16,
-        padding: 12,
-        gap: 8,
-      }}
-    >
-      <Text style={{ color: "#E2E8F0", fontSize: 16, fontWeight: "900" }}>
-        {session.skill} • {session.level}
-      </Text>
-
-      <Text style={{ color: "#94A3B8" }}>
-        {new Date(session.scheduledAt).toLocaleString()}
-      </Text>
-
-      <Text style={{ color: "#CBD5E1", fontWeight: "700" }}>
-        Status: {session.status}
-      </Text>
-
-      <View style={{ flexDirection: "row", gap: 10 }}>
-        <Pressable
-          onPress={onEnterZoom}
-          disabled={busy}
-          style={{
-            backgroundColor: "#10B981",
-            paddingVertical: 10,
-            paddingHorizontal: 14,
-            borderRadius: 12,
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#0B1220", fontWeight: "900" }}>
-            Enter Zoom
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onEndMeeting}
-          disabled={busy}
-          style={{
-            backgroundColor: "#EF4444",
-            paddingVertical: 10,
-            paddingHorizontal: 14,
-            borderRadius: 12,
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#0B1220", fontWeight: "900" }}>
-            End Meeting
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-</file>
-
-<file path="app/sessions/room/[id]/hooks/useSessionChat.ts">
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useRef, useState } from "react";
-import {
-    listSessionChat,
-    sendSessionChat,
-} from "../../api/sessionsApi";
-
-async function getToken() {
-  return AsyncStorage.getItem("token");
-}
-
-export function useSessionChat(sessionId: string) {
-  const [messages, setMessages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const tokenRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      tokenRef.current = await getToken();
-      if (!tokenRef.current) return;
-      setLoading(true);
-      const msgs = await listSessionChat(tokenRef.current, sessionId);
-      setMessages(msgs);
-      setLoading(false);
-    })();
-  }, [sessionId]);
-
-  const send = async (text: string) => {
-    if (!tokenRef.current) return;
-    const optimistic = {
-      _id: Math.random().toString(),
-      text,
-      senderId: "me",
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((m) => [...m, optimistic]);
-
-    const real = await sendSessionChat(tokenRef.current, sessionId, text);
-    setMessages((m) => m.filter((x) => x._id !== optimistic._id).concat(real));
-  };
-
-  return { messages, loading, send };
-}
-</file>
-
-<file path="app/sessions/room/[id]/hooks/useSessionFiles.ts">
-
-</file>
-
-<file path="app/sessions/room/[id]/hooks/useSessionRoom.ts">
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useEffect, useState } from "react";
-import { Alert } from "react-native";
-
-import type { SessionDTO } from "../../api/sessionsApi";
-import { getSessionById } from "../../api/sessionsApi";
-
-async function getToken(): Promise<string | null> {
-  return (await AsyncStorage.getItem("token")) || null;
-}
-
-export function useSessionRoom(sessionId: string) {
-  const [token, setToken] = useState<string | null>(null);
-  const [session, setSession] = useState<SessionDTO | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const loadSession = useCallback(
-    async (tk: string) => {
-      try {
-        setLoading(true);
-        const s = await getSessionById(tk, sessionId);
-        setSession(s);
-      } catch (e: any) {
-        Alert.alert(
-          "Failed",
-          e?.message || "Failed to load session"
-        );
-        setSession(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [sessionId]
-  );
-
-  useEffect(() => {
-    if (!sessionId) {
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
-      const tk = await getToken();
-      if (!tk) {
-        Alert.alert("Not logged in", "Please login again.");
-        setLoading(false);
-        return;
-      }
-      setToken(tk);
-      await loadSession(tk);
-    })();
-  }, [sessionId, loadSession]);
-
-  const refreshSession = useCallback(async () => {
-    if (!token) return;
-    await loadSession(token);
-  }, [token, loadSession]);
-
-  return {
-    loading,
-    session,
-    token,
-    refreshSession,
-  };
-}
-</file>
-
-<file path="app/sessions/room/[id]/index.tsx">
-import { useLocalSearchParams } from "expo-router";
-import React from "react";
-import { ActivityIndicator, Text, View } from "react-native";
-
-import { useSessionChat } from "./hooks/useSessionChat";
-import { useSessionFiles } from "./hooks/useSessionFiles";
-import { useSessionRoom } from "./hooks/useSessionRoom";
-
-import ChatPanel from "./components/ChatPanel";
-import FilesPanel from "./components/FilesPanel";
-import RoomHeader from "./components/RoomHeader";
-
-export default function SessionRoomScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const sessionId = String(id || "").trim();
-
-  // ---------------- Core Session ----------------
-  const {
-    loading,
-    session,
-    isMentor,
-    isLearner,
-    endMeeting,
-    openZoom,
-    refresh,
-    error,
-  } = useSessionRoom(sessionId);
-
-  // ---------------- Chat ----------------
-  const chat = useSessionChat(sessionId);
-
-  // ---------------- Files ----------------
-  const files = useSessionFiles(sessionId);
-
-  // ---------------- Guards ----------------
-  if (!sessionId) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>Missing session id</Text>
-      </View>
-    );
-  }
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (error || !session) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{error || "Session not found"}</Text>
-      </View>
-    );
-  }
-
-  // ---------------- UI ----------------
-  return (
-    <View style={styles.container}>
-      <RoomHeader
-        session={session}
-        isMentor={isMentor}
-        isLearner={isLearner}
-        onEnterZoom={openZoom}
-        onEndMeeting={endMeeting}
-        onRefresh={refresh}
-      />
-
-      <FilesPanel
-        files={files.files}
-        loading={files.loading}
-        onUpload={files.upload}
-      />
-
-      <ChatPanel
-        messages={chat.messages}
-        loading={chat.loading}
-        text={chat.text}
-        onChangeText={chat.setText}
-        onSend={chat.send}
-      />
-    </View>
-  );
-}
-
-// ---------------- Styles ----------------
-const styles = {
-  container: {
-    flex: 1,
-    backgroundColor: "#0B1220",
-    padding: 14,
-    gap: 12,
-  },
-  center: {
-    flex: 1,
-    backgroundColor: "#0B1220",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  error: {
-    color: "#E2E8F0",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-};
-</file>
-
-<file path="app/sessions/room/[id]/utils/presence.ts">
-
-</file>
-
-<file path="app/sessions/room/[id]/utils/zoom.ts">
-
-</file>
 
 <file path=".gitignore">
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
@@ -9714,6 +8849,1548 @@ export const styles = StyleSheet.create({
 });
 </file>
 
+<file path="app/sessions/room/[id]/components/ChatPanel.tsx">
+// app/sessions/room/[id]/components/ChatPanel.tsx
+import React from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import type { RoomChatItem } from "../hooks/useSessionChat";
+
+export default function ChatPanel({
+  meId,
+  items,
+  loading,
+  error,
+  peerTyping,
+  text,
+  sending,
+  canSend,
+  onChangeText,
+  onSend,
+}: {
+  meId: string;
+  items: RoomChatItem[];
+  loading: boolean;
+  error: string | null;
+  peerTyping: boolean;
+  text: string;
+  sending: boolean;
+  canSend: boolean;
+  onChangeText: (v: string) => void;
+  onSend: () => void;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "#020617",
+        borderWidth: 1,
+        borderColor: "#1F2937",
+        borderRadius: 16,
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          padding: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: "#0B1120",
+        }}
+      >
+        <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Chat</Text>
+        {peerTyping ? (
+          <Text style={{ color: "#94A3B8", marginTop: 4 }}>Typing…</Text>
+        ) : null}
+      </View>
+
+      {loading ? (
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator />
+        </View>
+      ) : error ? (
+        <View style={{ flex: 1, padding: 12 }}>
+          <Text style={{ color: "#FCA5A5" }}>{error}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={[...items].reverse()} // inverted manually
+          keyExtractor={(it) => it.id}
+          contentContainerStyle={{ padding: 12, gap: 10 }}
+          renderItem={({ item }) => {
+            const mine = String(item.senderId) === String(meId);
+            return (
+              <View
+                style={{
+                  alignSelf: mine ? "flex-end" : "flex-start",
+                  maxWidth: "80%",
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderRadius: 14,
+                  backgroundColor: mine ? "#22C55E" : "#0F172A",
+                  borderWidth: 1,
+                  borderColor: "#1F2937",
+                }}
+              >
+                <Text
+                  style={{
+                    color: mine ? "#052E16" : "#E2E8F0",
+                    fontWeight: "700",
+                  }}
+                >
+                  {item.text}
+                </Text>
+                <Text
+                  style={{
+                    color: mine ? "#064E3B" : "#64748B",
+                    marginTop: 4,
+                    fontSize: 12,
+                  }}
+                >
+                  {new Date(item.createdAt).toLocaleTimeString()}
+                </Text>
+              </View>
+            );
+          }}
+        />
+      )}
+
+      <View
+        style={{
+          padding: 10,
+          borderTopWidth: 1,
+          borderTopColor: "#0B1120",
+          gap: 8,
+        }}
+      >
+        <TextInput
+          value={text}
+          onChangeText={onChangeText}
+          placeholder="Type a message…"
+          placeholderTextColor="#64748B"
+          style={{
+            backgroundColor: "#0B1220",
+            borderWidth: 1,
+            borderColor: "#1F2937",
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: "#E2E8F0",
+          }}
+        />
+        <Pressable
+          onPress={onSend}
+          disabled={!canSend || sending}
+          style={{
+            paddingVertical: 10,
+            borderRadius: 12,
+            backgroundColor: !canSend || sending ? "#14532D" : "#22C55E",
+            opacity: !canSend || sending ? 0.6 : 1,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#052E16", fontWeight: "900" }}>
+            {sending ? "Sending…" : "Send"}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+</file>
+
+<file path="app/sessions/room/[id]/components/FilesPanel.tsx">
+// app/sessions/room/[id]/components/FilesPanel.tsx
+import React from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import type { SessionFileDTO } from "../../../api/sessionsApi";
+
+export default function FilesPanel({
+  files,
+  loading,
+  error,
+  uploading,
+  onUpload,
+}: {
+  files: SessionFileDTO[];
+  loading: boolean;
+  error: string | null;
+  uploading: boolean;
+  onUpload: () => void;
+}) {
+  return (
+    <View
+      style={{
+        backgroundColor: "#0B1220",
+        borderWidth: 1,
+        borderColor: "#1F2937",
+        borderRadius: 16,
+        padding: 12,
+        gap: 10,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Files</Text>
+
+        <Pressable
+          onPress={onUpload}
+          disabled={uploading}
+          style={{
+            paddingVertical: 8,
+            paddingHorizontal: 10,
+            borderRadius: 12,
+            backgroundColor: "#334155",
+            opacity: uploading ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>
+            {uploading ? "Uploading…" : "Upload"}
+          </Text>
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <ActivityIndicator />
+      ) : error ? (
+        <Text style={{ color: "#FCA5A5" }}>{error}</Text>
+      ) : files.length === 0 ? (
+        <Text style={{ color: "#64748B" }}>No files yet.</Text>
+      ) : (
+        files.slice(0, 6).map((f) => (
+          <View
+            key={f._id}
+            style={{
+              padding: 10,
+              borderRadius: 12,
+              backgroundColor: "#0F172A",
+              borderWidth: 1,
+              borderColor: "#1F2937",
+            }}
+          >
+            <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>
+              {f.name}
+            </Text>
+            <Text style={{ color: "#64748B", marginTop: 2 }}>{f.url}</Text>
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+</file>
+
+<file path="app/sessions/room/[id]/components/MessageBubble.tsx">
+import { Text, View } from "react-native";
+
+export default function MessageBubble({
+  msg,
+  mine,
+}: {
+  msg: any;
+  mine: boolean;
+}) {
+  return (
+    <View
+      style={{
+        alignSelf: mine ? "flex-end" : "flex-start",
+        backgroundColor: mine ? "#10B981" : "#1F2937",
+        padding: 10,
+        borderRadius: 12,
+        marginVertical: 4,
+        maxWidth: "80%",
+      }}
+    >
+      <Text style={{ color: "#fff" }}>{msg.text}</Text>
+    </View>
+  );
+}
+</file>
+
+<file path="app/sessions/room/[id]/components/RoomHeader.tsx">
+// app/sessions/room/[id]/components/RoomHeader.tsx
+import React, { useMemo } from "react";
+import { Pressable, Text, View } from "react-native";
+import type { SessionDTO } from "../../../api/sessionsApi";
+
+function fmtCountdown(sec: number | null) {
+  if (sec === null) return "—";
+  const s = Math.max(0, sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  if (h > 0) return `${h}h ${m}m ${r}s`;
+  if (m > 0) return `${m}m ${r}s`;
+  return `${r}s`;
+}
+
+export default function RoomHeader({
+  session,
+  countdownSeconds,
+  joinEnabled,
+  joinHint,
+  busy,
+  onJoin,
+  onCancel,
+  onRefresh,
+  onBack,
+}: {
+  session: SessionDTO;
+  countdownSeconds: number | null;
+  joinEnabled: boolean;
+  joinHint: string;
+  busy: boolean;
+  onJoin: () => void;
+  onCancel: () => void;
+  onRefresh: () => void;
+  onBack: () => void;
+}) {
+  const statusText = useMemo(
+    () => String(session.status).toUpperCase(),
+    [session.status]
+  );
+
+  const showJoin = session.status === "accepted";
+  const showCancel =
+    session.status !== "completed" && session.status !== "cancelled";
+
+  return (
+    <View
+      style={{
+        backgroundColor: "#0B1220",
+        borderWidth: 1,
+        borderColor: "#1F2937",
+        borderRadius: 16,
+        padding: 12,
+        gap: 10,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: "#E2E8F0", fontWeight: "900", fontSize: 16 }}>
+            {session.skill || "Session"}{" "}
+            {session.level ? `• ${session.level}` : ""}
+          </Text>
+
+          <Text style={{ color: "#94A3B8", marginTop: 4 }}>
+            {session.scheduledAt
+              ? new Date(session.scheduledAt).toLocaleString()
+              : "—"}
+          </Text>
+
+          <Text style={{ color: "#64748B", marginTop: 4 }}>
+            Starts in:{" "}
+            {countdownSeconds !== null && countdownSeconds > 0
+              ? fmtCountdown(countdownSeconds)
+              : "Started"}
+          </Text>
+
+          {showJoin ? (
+            <Text
+              style={{
+                color: joinEnabled ? "#22C55E" : "#F59E0B",
+                marginTop: 6,
+              }}
+            >
+              {joinHint}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={{ alignItems: "flex-end" }}>
+          <View
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: "#111827",
+              borderWidth: 1,
+              borderColor: "#1F2937",
+            }}
+          >
+            <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>
+              {statusText}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        {showJoin ? (
+          <Pressable
+            onPress={onJoin}
+            disabled={!joinEnabled || busy}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: !joinEnabled || busy ? "#14532D" : "#22C55E",
+              opacity: !joinEnabled || busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#052E16", fontWeight: "900" }}>
+              Join (Zoom)
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {showCancel ? (
+          <Pressable
+            onPress={onCancel}
+            disabled={busy}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: "#334155",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Cancel</Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          onPress={onRefresh}
+          disabled={busy}
+          style={{
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            borderRadius: 12,
+            backgroundColor: "#1F2937",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Refresh</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onBack}
+          disabled={busy}
+          style={{
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            borderRadius: 12,
+            backgroundColor: "#0F172A",
+            borderWidth: 1,
+            borderColor: "#1F2937",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>
+            My Sessions
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+</file>
+
+<file path="app/sessions/room/[id]/hooks/useSessionChat.ts">
+// app/sessions/room/[id]/hooks/useSessionChat.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { SessionChatMsg } from "../../../api/sessionsApi";
+import {
+    getSessionTyping,
+    listSessionChat,
+    sendSessionChat,
+    setSessionTyping,
+} from "../../../api/sessionsApi";
+
+export type RoomChatItem = {
+  id: string;
+  senderId: string;
+  text: string;
+  createdAt: string;
+};
+
+async function getToken() {
+  return (await AsyncStorage.getItem("token")) || null;
+}
+
+function mapMsg(m: SessionChatMsg): RoomChatItem {
+  return {
+    id: String(m._id),
+    senderId: String(m.senderId),
+    text: String(m.text || ""),
+    createdAt: String(m.createdAt || new Date().toISOString()),
+  };
+}
+
+export function useSessionChat(sessionId: string, meId: string) {
+  const [items, setItems] = useState<RoomChatItem[]>([]);
+  const [loadingChat, setLoadingChat] = useState(true);
+  const [errorChat, setErrorChat] = useState<string | null>(null);
+
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const [peerTyping, setPeerTyping] = useState(false);
+
+  const tokenRef = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refresh = useCallback(
+    async (silent?: boolean) => {
+      if (!sessionId) return;
+
+      try {
+        setErrorChat(null);
+        if (!silent) setLoadingChat(true);
+
+        const tk = tokenRef.current || (await getToken());
+        tokenRef.current = tk;
+        if (!tk) {
+          setItems([]);
+          setErrorChat("Not logged in");
+          return;
+        }
+
+        const msgs = await listSessionChat(tk, sessionId);
+        const mapped = msgs.map((m: SessionChatMsg) => mapMsg(m));
+
+        // sort newest last for UI, we'll render inverted in component
+        mapped.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        setItems(mapped);
+      } catch (e: any) {
+        setErrorChat(e?.message || "Failed to load chat");
+      } finally {
+        if (!silent) setLoadingChat(false);
+      }
+    },
+    [sessionId]
+  );
+
+  useEffect(() => {
+    void refresh(false);
+
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => void refresh(true), 5000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+    };
+  }, [refresh]);
+
+  // typing poll (requirement #10)
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const run = async () => {
+      const tk = tokenRef.current || (await getToken());
+      tokenRef.current = tk;
+      if (!tk) return;
+
+      try {
+        const res = await getSessionTyping(tk, sessionId);
+        const ids = Array.isArray(res?.typingUserIds) ? res.typingUserIds : [];
+const someoneElseTyping = ids.some((id: string) => String(id) !== String(meId));
+        setPeerTyping(someoneElseTyping);
+      } catch {
+        // ignore typing failures to avoid noise
+      }
+    };
+
+    void run();
+
+    if (typingPollRef.current) clearInterval(typingPollRef.current);
+    typingPollRef.current = setInterval(() => void run(), 2500);
+
+    return () => {
+      if (typingPollRef.current) clearInterval(typingPollRef.current);
+      typingPollRef.current = null;
+    };
+  }, [meId, sessionId]);
+
+  const send = useCallback(async () => {
+    const t = text.trim();
+    if (!t || sending) return;
+    if (!sessionId) return;
+
+    const tk = tokenRef.current || (await getToken());
+    tokenRef.current = tk;
+    if (!tk) {
+      setErrorChat("Not logged in");
+      return;
+    }
+
+    const optimistic: RoomChatItem = {
+      id: `optimistic-${Math.random().toString(16).slice(2)}`,
+      senderId: meId || "me",
+      text: t,
+      createdAt: new Date().toISOString(),
+    };
+
+    setSending(true);
+    setText("");
+    setItems((prev) => [...prev, optimistic]);
+
+    try {
+      const real = await sendSessionChat(tk, sessionId, t);
+      const mapped = mapMsg(real);
+
+      setItems((prev) => {
+        const without = prev.filter((x) => x.id !== optimistic.id);
+        return [...without, mapped].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+
+      // stop typing after send
+      try {
+        await setSessionTyping(tk, sessionId, false);
+      } catch {}
+    } catch (e: any) {
+      setItems((prev) => prev.filter((x) => x.id !== optimistic.id));
+      setText(t);
+      setErrorChat(e?.message || "Failed to send");
+    } finally {
+      setSending(false);
+    }
+  }, [meId, sending, sessionId, text]);
+
+  // send typing with debounce while user types (requirement #10)
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const run = async () => {
+      const tk = tokenRef.current || (await getToken());
+      tokenRef.current = tk;
+      if (!tk) return;
+
+      try {
+        await setSessionTyping(tk, sessionId, text.trim().length > 0);
+      } catch {
+        // ignore
+      }
+    };
+
+    if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+    typingDebounceRef.current = setTimeout(() => void run(), 350);
+
+    return () => {
+      if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+      typingDebounceRef.current = null;
+    };
+  }, [sessionId, text]);
+
+  const canSend = useMemo(() => text.trim().length > 0 && !sending, [sending, text]);
+
+  return {
+    items,
+    loadingChat,
+    errorChat,
+
+    text,
+    setText,
+    sending,
+    canSend,
+
+    peerTyping,
+
+    refresh,
+    send,
+  };
+}
+</file>
+
+<file path="app/sessions/room/[id]/hooks/useSessionFiles.ts">
+// app/sessions/room/[id]/hooks/useSessionFiles.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { SessionFileDTO } from "../../../api/sessionsApi";
+import { listSessionFiles, uploadSessionFile } from "../../../api/sessionsApi";
+
+async function getToken() {
+  return (await AsyncStorage.getItem("token")) || null;
+}
+
+export function useSessionFiles(sessionId: string) {
+  const [files, setFiles] = useState<SessionFileDTO[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [errorFiles, setErrorFiles] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const tokenRef = useRef<string | null>(null);
+
+  const refresh = useCallback(
+    async (silent?: boolean) => {
+      if (!sessionId) return;
+
+      try {
+        setErrorFiles(null);
+        if (!silent) setLoadingFiles(true);
+
+        const tk = tokenRef.current || (await getToken());
+        tokenRef.current = tk;
+        if (!tk) {
+          setFiles([]);
+          setErrorFiles("Not logged in");
+          return;
+        }
+
+        const list = await listSessionFiles(tk, sessionId);
+        setFiles(Array.isArray(list) ? list : []);
+      } catch (e: any) {
+        setErrorFiles(e?.message || "Failed to load files");
+      } finally {
+        if (!silent) setLoadingFiles(false);
+      }
+    },
+    [sessionId]
+  );
+
+  useEffect(() => {
+    void refresh(false);
+  }, [refresh]);
+
+  const upload = useCallback(async () => {
+    if (!sessionId || uploading) return;
+
+    const tk = tokenRef.current || (await getToken());
+    tokenRef.current = tk;
+    if (!tk) {
+      setErrorFiles("Not logged in");
+      return;
+    }
+
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (res.canceled) return;
+      const asset = res.assets?.[0];
+      if (!asset?.uri) return;
+
+      setUploading(true);
+      const up = await uploadSessionFile(tk, sessionId, {
+        uri: asset.uri,
+        name: asset.name || "file",
+        mimeType: asset.mimeType || "application/octet-stream",
+      });
+
+      setFiles((prev) => [up, ...prev]);
+    } catch (e: any) {
+      setErrorFiles(e?.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }, [sessionId, uploading]);
+
+  return {
+    files,
+    loadingFiles,
+    errorFiles,
+    uploading,
+    refresh,
+    upload,
+  };
+}
+</file>
+
+<file path="app/sessions/room/[id]/hooks/useSessionRoom.ts">
+// app/sessions/room/[id]/hooks/useSessionRoom.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Linking } from "react-native";
+
+import { getMe } from "../../../../../lib/api";
+import type { SessionDTO, SessionStatus } from "../../../api/sessionsApi";
+import { ensureZoomMeeting, getSessionById, joinSession, updateSessionStatus } from "../../../api/sessionsApi";
+
+const UI_RULES = {
+  JOIN_EARLY_MIN: 5,
+  JOIN_LATE_MIN: 180,
+};
+
+function toMs(iso?: string | null) {
+  if (!iso) return null;
+  const t = new Date(String(iso)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+function minutesUntil(iso?: string | null) {
+  const t = toMs(iso);
+  if (!t) return null;
+  return Math.floor((t - Date.now()) / 60000);
+}
+function secondsUntil(iso?: string | null) {
+  const t = toMs(iso);
+  if (!t) return null;
+  return Math.floor((t - Date.now()) / 1000);
+}
+
+function canJoinNow(iso?: string | null) {
+  const untilMin = minutesUntil(iso);
+  if (untilMin === null) return { ok: false as const, reason: "Invalid time" };
+
+  if (untilMin > 0 && untilMin <= UI_RULES.JOIN_EARLY_MIN) return { ok: true as const };
+  if (untilMin <= 0) {
+    const start = toMs(iso) || Date.now();
+    const sinceMin = Math.floor((Date.now() - start) / 60000);
+    if (sinceMin <= UI_RULES.JOIN_LATE_MIN) return { ok: true as const };
+    return { ok: false as const, reason: "Join window expired" };
+  }
+  return { ok: false as const, reason: `Join opens ${UI_RULES.JOIN_EARLY_MIN} min before` };
+}
+
+async function getToken() {
+  return (await AsyncStorage.getItem("token")) || null;
+}
+
+export function useSessionRoom(sessionId: string) {
+  const [meId, setMeId] = useState<string>("");
+  const [session, setSession] = useState<SessionDTO | null>(null);
+
+  const [loadingSession, setLoadingSession] = useState(true);
+  const [busyAction, setBusyAction] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const tokenRef = useRef<string | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [tick, setTick] = useState(0);
+
+  const refresh = useCallback(
+    async (silent?: boolean) => {
+      if (!sessionId) return;
+
+      try {
+        setError(null);
+        if (!silent) setLoadingSession(true);
+
+        const tk = tokenRef.current || (await getToken());
+        tokenRef.current = tk;
+
+        if (!tk) {
+          setSession(null);
+          setError("Not logged in");
+          return;
+        }
+
+        const me = await getMe(tk);
+        const myId = String((me as any)?._id || (me as any)?.id || "").trim();
+        setMeId(myId);
+
+        const s = await getSessionById(tk, sessionId);
+        setSession(s);
+      } catch (e: any) {
+        setError(e?.message || "Failed to load session");
+        setSession(null);
+      } finally {
+        if (!silent) setLoadingSession(false);
+      }
+    },
+    [sessionId]
+  );
+
+  useEffect(() => {
+    void refresh(false);
+
+    if (tickRef.current) clearInterval(tickRef.current);
+    tickRef.current = setInterval(() => setTick((x) => x + 1), 1000);
+
+    if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+    refreshTimerRef.current = setInterval(() => void refresh(true), 8000);
+
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+      tickRef.current = null;
+      refreshTimerRef.current = null;
+    };
+  }, [refresh]);
+
+  const isMentor = useMemo(() => {
+    if (!session || !meId) return false;
+    return String(session.mentorId) === String(meId);
+  }, [session, meId]);
+
+  const isLearner = useMemo(() => {
+    if (!session || !meId) return false;
+    return String(session.learnerId) === String(meId);
+  }, [session, meId]);
+
+  const joinGate = useMemo(() => {
+    void tick;
+    return canJoinNow(session?.scheduledAt);
+  }, [session?.scheduledAt, tick]);
+
+  const countdownSeconds = useMemo(() => {
+    void tick;
+    return secondsUntil(session?.scheduledAt);
+  }, [session?.scheduledAt, tick]);
+
+  const runStatus = useCallback(
+    async (status: SessionStatus) => {
+      const tk = tokenRef.current || (await getToken());
+      tokenRef.current = tk;
+      if (!tk) return Alert.alert("Not logged in", "Please login again.");
+
+      try {
+        setBusyAction(true);
+        const updated = await updateSessionStatus(tk, sessionId, status);
+        setSession(updated);
+      } catch (e: any) {
+        Alert.alert("Failed", e?.message || "Request failed");
+      } finally {
+        setBusyAction(false);
+      }
+    },
+    [sessionId]
+  );
+
+  const cancel = useCallback(async () => {
+    if (!session) return;
+    if (session.status === "cancelled" || session.status === "completed") {
+      return Alert.alert("Not allowed", "Session already finished.");
+    }
+
+    Alert.alert("Cancel session", "Are you sure you want to cancel?", [
+      { text: "Back", style: "cancel" },
+      { text: "Cancel", style: "destructive", onPress: () => void runStatus("cancelled") },
+    ]);
+  }, [runStatus, session]);
+
+  const openZoom = useCallback(async () => {
+    if (!session) return;
+
+    if (session.status !== "accepted") {
+      return Alert.alert("Not allowed", "Session must be accepted first.");
+    }
+    if (!joinGate.ok) {
+      return Alert.alert("Join locked", joinGate.reason || "Join is not available yet.");
+    }
+
+    const tk = tokenRef.current || (await getToken());
+    tokenRef.current = tk;
+    if (!tk) return Alert.alert("Not logged in", "Please login again.");
+
+    try {
+      setBusyAction(true);
+
+      // mark join on server (keeps your existing flow)
+      const updated = await joinSession(tk, sessionId);
+      setSession(updated);
+
+      // ✅ Safe zoom url resolution:
+      // 1) prefer updated.zoomJoinUrl
+      // 2) else try ensureZoomMeeting
+      // 3) else fallback to session.zoomJoinUrl if exists
+      let zoomUrl = String(updated?.zoomJoinUrl || "").trim();
+      if (!zoomUrl) {
+        try {
+          const ensured = await ensureZoomMeeting(tk, sessionId);
+          zoomUrl = String((ensured as any)?.zoomJoinUrl || "").trim();
+        } catch {}
+      }
+      if (!zoomUrl) {
+        zoomUrl = String(session?.zoomJoinUrl || "").trim();
+      }
+
+      if (!zoomUrl) {
+        Alert.alert("Missing Zoom link", "No Zoom link found for this session.");
+        return;
+      }
+
+      const can = await Linking.canOpenURL(zoomUrl);
+      if (!can) {
+        Alert.alert("Cannot open", "Invalid Zoom link.");
+        return;
+      }
+      await Linking.openURL(zoomUrl);
+    } catch (e: any) {
+      Alert.alert("Join failed", e?.message || "Failed to join session.");
+    } finally {
+      setBusyAction(false);
+    }
+  }, [joinGate.ok, joinGate.reason, session, sessionId]);
+
+  return {
+    meId,
+    session,
+
+    loadingSession,
+    busyAction,
+    error,
+
+    isMentor,
+    isLearner,
+
+    joinGate,
+    countdownSeconds,
+
+    refresh,
+    cancel,
+    openZoom,
+  };
+}
+</file>
+
+<file path="app/sessions/room/[id]/index.tsx">
+// app/sessions/room/[id]/index.tsx
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+
+import ChatPanel from "./components/ChatPanel";
+import FilesPanel from "./components/FilesPanel";
+import RoomHeader from "./components/RoomHeader";
+
+import { useSessionChat } from "./hooks/useSessionChat";
+import { useSessionFiles } from "./hooks/useSessionFiles";
+import { useSessionRoom } from "./hooks/useSessionRoom";
+
+export default function SessionRoomScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const sessionId = String(id || "").trim();
+
+  const room = useSessionRoom(sessionId);
+  const files = useSessionFiles(sessionId);
+  const chat = useSessionChat(sessionId, room.meId);
+
+  if (!sessionId) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>Missing session id</Text>
+      </View>
+    );
+  }
+
+  if (room.loadingSession) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (room.error || !room.session) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>{room.error || "Session not found"}</Text>
+      </View>
+    );
+  }
+
+  const joinEnabled = !!room.joinGate.ok && !room.busyAction;
+  const joinHint =
+    room.session.status !== "accepted"
+      ? "Session is not accepted yet."
+      : room.joinGate.ok
+      ? "Join is available now."
+      : room.joinGate.reason || "Join is locked.";
+
+  return (
+    <View style={styles.container}>
+      <RoomHeader
+        session={room.session}
+        countdownSeconds={room.countdownSeconds}
+        joinEnabled={joinEnabled}
+        joinHint={joinHint}
+        busy={room.busyAction}
+        onJoin={room.openZoom}
+        onCancel={room.cancel}
+        onRefresh={() => {
+          room.refresh(false);
+          files.refresh(false);
+          chat.refresh(false);
+        }}
+        onBack={() => router.replace("/sessions")} // adjust if your My Sessions route differs
+      />
+
+      <FilesPanel
+        files={files.files}
+        loading={files.loadingFiles}
+        error={files.errorFiles}
+        uploading={files.uploading}
+        onUpload={files.upload}
+      />
+
+      <ChatPanel
+        meId={room.meId}
+        items={chat.items}
+        loading={chat.loadingChat}
+        error={chat.errorChat}
+        peerTyping={chat.peerTyping}
+        text={chat.text}
+        sending={chat.sending}
+        canSend={chat.canSend}
+        onChangeText={chat.setText}
+        onSend={chat.send}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0B1220",
+    padding: 14,
+    gap: 12,
+  },
+  center: {
+    flex: 1,
+    backgroundColor: "#0B1220",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 14,
+  },
+  error: {
+    color: "#E2E8F0",
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+});
+</file>
+
+<file path="app/sessions/room/[id]/utils/presence.ts">
+
+</file>
+
+<file path="app/sessions/room/[id]/utils/zoom.ts">
+
+</file>
+
+<file path="app/sessions/room/[id]old.tsx">
+import * as DocumentPicker from "expo-document-picker";
+import { useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Linking,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import type { SessionDTO } from "../api/sessionsApi";
+import {
+  getSessionById,
+  listSessionChat,
+  listSessionFiles,
+  sendSessionChat,
+  updateSessionStatus,
+  uploadSessionFile,
+} from "../api/sessionsApi";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_URL } from "../../../lib/api";
+
+type ChatMsg = {
+  _id: string;
+  senderId: string;
+  text: string;
+  createdAt: string;
+};
+
+type SessionFile = {
+  _id: string;
+  uploaderId: string;
+  name: string;
+  url: string;
+  createdAt: string;
+};
+
+async function getToken() {
+  // عدّل المفتاح إذا عندك اسم ثاني للتوكن
+  return (await AsyncStorage.getItem("token")) || null;
+}
+
+export default function SessionRoomScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const sessionId = String(id || "").trim();
+
+  const [token, setToken] = useState<string | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<SessionDTO | null>(null);
+
+  const [chatLoading, setChatLoading] = useState(false);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [text, setText] = useState("");
+
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [files, setFiles] = useState<SessionFile[]>([]);
+
+  const [busy, setBusy] = useState(false);
+
+  const flatRef = useRef<FlatList>(null);
+
+  const zoomUrl = useMemo(() => (session as any)?.zoomJoinUrl || "", [session]);
+
+  async function loadAll(tk: string) {
+    try {
+      setLoading(true);
+      const s = await getSessionById(tk, sessionId);
+      setSession(s);
+
+      setChatLoading(true);
+      const chat = await listSessionChat(tk, sessionId);
+      setMessages(chat);
+
+      setFilesLoading(true);
+      const fl = await listSessionFiles(tk, sessionId);
+      setFiles(fl);
+    } catch (e: any) {
+      Alert.alert("Failed", e?.message || "Failed to load session room");
+    } finally {
+      setLoading(false);
+      setChatLoading(false);
+      setFilesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    (async () => {
+      const tk = await getToken();
+      setToken(tk);
+      if (!tk) {
+        setLoading(false);
+        Alert.alert("Not logged in", "Please login again.");
+        return;
+      }
+      if (!sessionId) {
+        setLoading(false);
+        Alert.alert("Missing id", "No session id in route.");
+        return;
+      }
+      await loadAll(tk);
+    })();
+  }, [sessionId]);
+
+  const onSend = async () => {
+    if (!token) return;
+    const t = text.trim();
+    if (!t) return;
+
+    try {
+      setBusy(true);
+      const msg = await sendSessionChat(token, sessionId, t);
+      setMessages((prev) => [...prev, msg]);
+      setText("");
+
+      // scroll
+      setTimeout(() => flatRef.current?.scrollToEnd?.({ animated: true }), 50);
+    } catch (e: any) {
+      Alert.alert("Send failed", e?.message || "Send failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onPickUpload = async () => {
+    if (!token) return;
+
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (res.canceled) return;
+      const file = res.assets?.[0];
+      if (!file?.uri) return;
+
+      setBusy(true);
+      const uploaded = await uploadSessionFile(token, sessionId, {
+        uri: file.uri,
+        name: file.name || "file",
+        mimeType: file.mimeType || "application/octet-stream",
+      });
+
+      setFiles((prev) => [uploaded, ...prev]);
+    } catch (e: any) {
+      Alert.alert("Upload failed", e?.message || "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onEnterZoom = async () => {
+    const url = String(zoomUrl || "").trim();
+    if (!url) {
+      Alert.alert("No Zoom link", "This session has no zoomJoinUrl yet.");
+      return;
+    }
+    const ok = await Linking.canOpenURL(url);
+    if (!ok) return Alert.alert("Cannot open", "Invalid Zoom link.");
+    Linking.openURL(url);
+  };
+
+  const onEndMeeting = async () => {
+    if (!token || !sessionId) return;
+
+    const ok = await new Promise<boolean>((resolve) => {
+      Alert.alert("End meeting", "This will mark the session as completed.", [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "End", style: "destructive", onPress: () => resolve(true) },
+      ]);
+    });
+    if (!ok) return;
+
+    try {
+      setBusy(true);
+      const updated = await updateSessionStatus(token, sessionId, "completed");
+      setSession(updated);
+      Alert.alert("Done", "Session marked as completed.");
+    } catch (e: any) {
+      Alert.alert("Failed", e?.message || "Failed to complete session");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#0B1220", padding: 16 }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#0B1220", padding: 16 }}>
+        <Text style={{ color: "#E2E8F0" }}>Session not found.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: "#0B1220", padding: 14, gap: 12 }}>
+      {/* Header */}
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: "#1F2937",
+          borderRadius: 16,
+          padding: 12,
+          gap: 6,
+        }}
+      >
+        <Text style={{ color: "#E2E8F0", fontWeight: "900", fontSize: 16 }}>
+          {session.skill} • {session.level}
+        </Text>
+        <Text style={{ color: "#94A3B8" }}>{session.scheduledAt}</Text>
+        <Text style={{ color: "#64748B" }}>Status: {session.status}</Text>
+
+        {/* Actions */}
+        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+          <Pressable
+            onPress={onEnterZoom}
+            disabled={busy}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: "#10B981",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#0B1220", fontWeight: "900" }}>
+              Enter Zoom
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onEndMeeting}
+            disabled={busy}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: "#EF4444",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#0B1220", fontWeight: "900" }}>
+              End Meeting
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => token && loadAll(token)}
+            disabled={busy}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: "#334155",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Refresh</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Files */}
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: "#1F2937",
+          borderRadius: 16,
+          padding: 12,
+          gap: 10,
+          flexShrink: 0,
+        }}
+      >
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Files</Text>
+
+          <Pressable
+            onPress={onPickUpload}
+            disabled={busy}
+            style={{
+              paddingVertical: 8,
+              paddingHorizontal: 10,
+              borderRadius: 12,
+              backgroundColor: "#334155",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>Upload</Text>
+          </Pressable>
+        </View>
+
+        {filesLoading ? (
+          <ActivityIndicator />
+        ) : files.length === 0 ? (
+          <Text style={{ color: "#64748B" }}>No files yet.</Text>
+        ) : (
+          files.slice(0, 6).map((f) => (
+            <Pressable
+              key={f._id}
+              onPress={() => {
+                const u = String(f.url || "");
+                const full = u.startsWith("http") ? u : `${API_URL}${u}`;
+                Linking.openURL(full);
+              }}
+              style={{
+                padding: 10,
+                borderRadius: 12,
+                backgroundColor: "#0F172A",
+                borderWidth: 1,
+                borderColor: "#1F2937",
+              }}
+            >
+              <Text style={{ color: "#E2E8F0", fontWeight: "800" }}>
+                {f.name}
+              </Text>
+              <Text style={{ color: "#64748B", marginTop: 2 }}>
+                Tap to open
+              </Text>
+            </Pressable>
+          ))
+        )}
+      </View>
+
+      {/* Chat */}
+      <View
+        style={{
+          flex: 1,
+          borderWidth: 1,
+          borderColor: "#1F2937",
+          borderRadius: 16,
+          padding: 12,
+          gap: 10,
+        }}
+      >
+        <Text style={{ color: "#E2E8F0", fontWeight: "900" }}>Chat</Text>
+
+        {chatLoading ? (
+          <ActivityIndicator />
+        ) : (
+          <FlatList
+            ref={flatRef}
+            data={messages}
+            keyExtractor={(m) => m._id}
+            renderItem={({ item }) => (
+              <View style={{ paddingVertical: 6 }}>
+                <Text style={{ color: "#94A3B8", fontSize: 12 }}>
+                  {item.senderId}
+                </Text>
+                <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>
+                  {item.text}
+                </Text>
+              </View>
+            )}
+          />
+        )}
+
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder="Type..."
+            placeholderTextColor="#64748B"
+            style={{
+              flex: 1,
+              borderWidth: 1,
+              borderColor: "#1F2937",
+              borderRadius: 12,
+              padding: 10,
+              color: "#E2E8F0",
+            }}
+          />
+          <Pressable
+            onPress={onSend}
+            disabled={busy}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              backgroundColor: "#10B981",
+              opacity: busy ? 0.6 : 1,
+              justifyContent: "center",
+            }}
+          >
+            <Text style={{ color: "#0B1220", fontWeight: "900" }}>Send</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+</file>
+
 <file path="app/sessions/screens/(components)/SessionsEmptyState.tsx">
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -17547,248 +18224,6 @@ const items = await listMySessions(t);
 }
 </file>
 
-<file path="app/sessions/screens/request/(hooks)/useRequestSessionForm.ts">
-// app/sessions/screens/request/(hooks)/useRequestSessionForm.ts
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useMemo, useState } from "react";
-
-import { requestSession, type SessionDTO } from "../../../api/sessionsApi";
-
-
-type Errors = {
-  skill?: string;
-  level?: string;
-  date?: string;
-  time?: string;
-};
-
-type Touched = {
-  topic: boolean;
-  schedule: boolean;
-  note: boolean;
-};
-
-export type RequestSessionFormInit = {
-  mentorId: string;
-  mentorName?: string;
-  prefillSkill?: string;
-  prefillLevel?: string;
-};
-
-function normalizeStr(v: any) {
-  return String(v ?? "").trim();
-}
-
-function isValidTimeHHMM(t: string) {
-  // very safe: accept "HH:MM" 00:00..23:59
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(t);
-}
-
-function isValidDateYYYYMMDD(d: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(d);
-}
-
-function todayYYYYMMDD() {
-  const dt = new Date();
-  const yyyy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function buildISO(dateYYYYMMDD: string, timeHHMM: string) {
-  // local time -> ISO
-  const [y, m, d] = dateYYYYMMDD.split("-").map(Number);
-  const [hh, mm] = timeHHMM.split(":").map(Number);
-  const dt = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
-  return dt.toISOString();
-}
-
-export function useRequestSessionForm(init: RequestSessionFormInit) {
-  const [step, setStep] = useState<number>(1);
-
-  const [skill, setSkill] = useState<string>(normalizeStr(init.prefillSkill));
-  const [level, setLevel] = useState<string>(normalizeStr(init.prefillLevel));
-
-  const [date, setDate] = useState<string>(""); // YYYY-MM-DD
-  const [time, setTime] = useState<string>(""); // HH:MM
-
-  const [note, setNote] = useState<string>("");
-
-  const [touched, setTouched] = useState<Touched>({
-    topic: false,
-    schedule: false,
-    note: false,
-  });
-
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string>("");
-  const [created, setCreated] = useState<SessionDTO | null>(null);
-
-  const errors: Errors = useMemo(() => {
-    const e: Errors = {};
-
-    // Step 1
-    if (!normalizeStr(skill)) e.skill = "Please enter a skill/topic.";
-    if (!normalizeStr(level)) e.level = "Please choose a level.";
-
-    // Step 2
-    if (!normalizeStr(date)) e.date = "Please choose a date.";
-    else if (!isValidDateYYYYMMDD(date)) e.date = "Invalid date format.";
-    if (!normalizeStr(time)) e.time = "Please choose a time.";
-    else if (!isValidTimeHHMM(time)) e.time = "Invalid time format.";
-
-    return e;
-  }, [skill, level, date, time]);
-
-  const canGoNext = useMemo(() => {
-    if (step === 1) return !errors.skill && !errors.level;
-    if (step === 2) return !errors.date && !errors.time;
-    return true; // step 3 always allows submit button (hook submit validates)
-  }, [step, errors]);
-
-  const touchStep = useCallback((s: number) => {
-    setTouched((prev) => {
-      if (s === 1) return { ...prev, topic: true };
-      if (s === 2) return { ...prev, schedule: true };
-      if (s === 3) return { ...prev, note: true };
-      return prev;
-    });
-  }, []);
-
-  const next = useCallback(() => {
-    setStep((p) => Math.min(3, p + 1));
-  }, []);
-
-  const back = useCallback(() => {
-    setStep((p) => Math.max(1, p - 1));
-  }, []);
-
-  const reviewScheduleText = useMemo(() => {
-    const d = normalizeStr(date);
-    const t = normalizeStr(time);
-    if (!d && !t) return "—";
-    if (d && t) return `${d} ${t}`;
-    return d || t;
-  }, [date, time]);
-
-  // StepSchedule "quick pick" can pass either:
-  // - { date: "YYYY-MM-DD", time: "HH:MM" }
-  // - or a string preset (we handle a few common ones safely)
-  const quickPick = useCallback((preset: any) => {
-    // object form
-    if (preset && typeof preset === "object") {
-      const d = normalizeStr(preset.date);
-      const t = normalizeStr(preset.time);
-      if (d) setDate(d);
-      if (t) setTime(t);
-      return;
-    }
-
-    // string presets (safe defaults)
-    const p = normalizeStr(preset);
-    const today = todayYYYYMMDD();
-    if (p === "today") {
-      setDate(today);
-      return;
-    }
-    if (p === "today_18") {
-      setDate(today);
-      setTime("18:00");
-      return;
-    }
-    if (p === "today_19") {
-      setDate(today);
-      setTime("19:00");
-      return;
-    }
-  }, []);
-
-  const submit = useCallback(async () => {
-    setSubmitError("");
-
-    // validate all
-    const s = normalizeStr(skill);
-    const l = normalizeStr(level);
-    const d = normalizeStr(date);
-    const t = normalizeStr(time);
-
-    if (!init.mentorId) {
-      setSubmitError("Missing mentorId.");
-      return { ok: false as const };
-    }
-    if (!s || !l || !d || !t || errors.skill || errors.level || errors.date || errors.time) {
-      setSubmitError("Please fix the missing fields above.");
-      return { ok: false as const };
-    }
-
-    let token = "";
-    try {
-      token = (await AsyncStorage.getItem("token")) || "";
-    } catch {
-      token = "";
-    }
-
-    if (!token) {
-      setSubmitError("You are not logged in. Please login again.");
-      return { ok: false as const };
-    }
-
-    setSubmitting(true);
-    try {
-      const scheduledAt = buildISO(d, t);
-
-      const createdSession = await requestSession(token, {
-        mentorId: init.mentorId,
-        skill: s,
-        level: l,
-        scheduledAt,
-        note: normalizeStr(note),
-      });
-
-      setCreated(createdSession);
-      return { ok: true as const, session: createdSession };
-    } catch (e: any) {
-      setSubmitError(e?.message || "Failed to send request.");
-      return { ok: false as const };
-    } finally {
-      setSubmitting(false);
-    }
-  }, [init.mentorId, skill, level, date, time, note, errors]);
-
-  return {
-    // expected by RequestSessionScreen
-    step,
-    touched,
-    errors,
-    submitting,
-    submitError,
-    created,
-
-    skill,
-    level,
-    date,
-    time,
-    note,
-
-    setSkill,
-    setLevel,
-    setDate,
-    setTime,
-    setNote,
-
-    canGoNext,
-    next,
-    back,
-    touchStep,
-    quickPick,
-    reviewScheduleText,
-
-    submit,
-  };
-}
-</file>
-
 <file path="app/weekly-availability/components.tsx">
 // app/weekly-availability/components.tsx
 import React, { useMemo } from "react";
@@ -21225,6 +21660,250 @@ const styles = StyleSheet.create({
 export { default } from "./(auth)/login";
 </file>
 
+<file path="app/sessions/screens/request/(hooks)/useRequestSessionForm.ts">
+// app/sessions/screens/request/(hooks)/useRequestSessionForm.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useMemo, useState } from "react";
+
+import { requestSession, type SessionDTO } from "../../../api/sessionsApi";
+
+
+type Errors = {
+  skill?: string;
+  level?: string;
+  date?: string;
+  time?: string;
+};
+
+type Touched = {
+  topic: boolean;
+  schedule: boolean;
+  note: boolean;
+};
+
+export type RequestSessionFormInit = {
+  mentorId: string;
+  mentorName?: string;
+  prefillSkill?: string;
+  prefillLevel?: string;
+};
+export type Step = 1 | 2 | 3;
+
+function normalizeStr(v: any) {
+  return String(v ?? "").trim();
+}
+
+function isValidTimeHHMM(t: string) {
+  // very safe: accept "HH:MM" 00:00..23:59
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(t);
+}
+
+function isValidDateYYYYMMDD(d: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(d);
+}
+
+function todayYYYYMMDD() {
+  const dt = new Date();
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function buildISO(dateYYYYMMDD: string, timeHHMM: string) {
+  // local time -> ISO
+  const [y, m, d] = dateYYYYMMDD.split("-").map(Number);
+  const [hh, mm] = timeHHMM.split(":").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+  return dt.toISOString();
+}
+
+export function useRequestSessionForm(init: RequestSessionFormInit) {
+const [step, setStep] = useState<Step>(1);
+
+  const [skill, setSkill] = useState<string>(normalizeStr(init.prefillSkill));
+  const [level, setLevel] = useState<string>(normalizeStr(init.prefillLevel));
+
+  const [date, setDate] = useState<string>(""); // YYYY-MM-DD
+  const [time, setTime] = useState<string>(""); // HH:MM
+
+  const [note, setNote] = useState<string>("");
+
+  const [touched, setTouched] = useState<Touched>({
+    topic: false,
+    schedule: false,
+    note: false,
+  });
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string>("");
+  const [created, setCreated] = useState<SessionDTO | null>(null);
+
+  const errors: Errors = useMemo(() => {
+    const e: Errors = {};
+
+    // Step 1
+    if (!normalizeStr(skill)) e.skill = "Please enter a skill/topic.";
+    if (!normalizeStr(level)) e.level = "Please choose a level.";
+
+    // Step 2
+    if (!normalizeStr(date)) e.date = "Please choose a date.";
+    else if (!isValidDateYYYYMMDD(date)) e.date = "Invalid date format.";
+    if (!normalizeStr(time)) e.time = "Please choose a time.";
+    else if (!isValidTimeHHMM(time)) e.time = "Invalid time format.";
+
+    return e;
+  }, [skill, level, date, time]);
+
+  const canGoNext = useMemo(() => {
+    if (step === 1) return !errors.skill && !errors.level;
+    if (step === 2) return !errors.date && !errors.time;
+    return true; // step 3 always allows submit button (hook submit validates)
+  }, [step, errors]);
+
+const touchStep = useCallback((s: Step) => {
+    setTouched((prev) => {
+      if (s === 1) return { ...prev, topic: true };
+      if (s === 2) return { ...prev, schedule: true };
+      if (s === 3) return { ...prev, note: true };
+      return prev;
+    });
+  }, []);
+
+ const next = useCallback(() => {
+  setStep((p) => (p === 1 ? 2 : p === 2 ? 3 : 3));
+}, []);
+
+const back = useCallback(() => {
+  setStep((p) => (p === 3 ? 2 : p === 2 ? 1 : 1));
+}, []);
+
+
+  const reviewScheduleText = useMemo(() => {
+    const d = normalizeStr(date);
+    const t = normalizeStr(time);
+    if (!d && !t) return "—";
+    if (d && t) return `${d} ${t}`;
+    return d || t;
+  }, [date, time]);
+
+  // StepSchedule "quick pick" can pass either:
+  // - { date: "YYYY-MM-DD", time: "HH:MM" }
+  // - or a string preset (we handle a few common ones safely)
+  const quickPick = useCallback((preset: any) => {
+    // object form
+    if (preset && typeof preset === "object") {
+      const d = normalizeStr(preset.date);
+      const t = normalizeStr(preset.time);
+      if (d) setDate(d);
+      if (t) setTime(t);
+      return;
+    }
+
+    // string presets (safe defaults)
+    const p = normalizeStr(preset);
+    const today = todayYYYYMMDD();
+    if (p === "today") {
+      setDate(today);
+      return;
+    }
+    if (p === "today_18") {
+      setDate(today);
+      setTime("18:00");
+      return;
+    }
+    if (p === "today_19") {
+      setDate(today);
+      setTime("19:00");
+      return;
+    }
+  }, []);
+
+  const submit = useCallback(async () => {
+    setSubmitError("");
+
+    // validate all
+    const s = normalizeStr(skill);
+    const l = normalizeStr(level);
+    const d = normalizeStr(date);
+    const t = normalizeStr(time);
+
+    if (!init.mentorId) {
+      setSubmitError("Missing mentorId.");
+      return { ok: false as const };
+    }
+    if (!s || !l || !d || !t || errors.skill || errors.level || errors.date || errors.time) {
+      setSubmitError("Please fix the missing fields above.");
+      return { ok: false as const };
+    }
+
+    let token = "";
+    try {
+      token = (await AsyncStorage.getItem("token")) || "";
+    } catch {
+      token = "";
+    }
+
+    if (!token) {
+      setSubmitError("You are not logged in. Please login again.");
+      return { ok: false as const };
+    }
+
+    setSubmitting(true);
+    try {
+      const scheduledAt = buildISO(d, t);
+
+      const createdSession = await requestSession(token, {
+        mentorId: init.mentorId,
+        skill: s,
+        level: l,
+        scheduledAt,
+        note: normalizeStr(note),
+      });
+
+      setCreated(createdSession);
+      return { ok: true as const, session: createdSession };
+    } catch (e: any) {
+      setSubmitError(e?.message || "Failed to send request.");
+      return { ok: false as const };
+    } finally {
+      setSubmitting(false);
+    }
+  }, [init.mentorId, skill, level, date, time, note, errors]);
+
+  return {
+    // expected by RequestSessionScreen
+    step,
+    touched,
+    errors,
+    submitting,
+    submitError,
+    created,
+
+    skill,
+    level,
+    date,
+    time,
+    note,
+
+    setSkill,
+    setLevel,
+    setDate,
+    setTime,
+    setNote,
+
+    canGoNext,
+    next,
+    back,
+    touchStep,
+    quickPick,
+    reviewScheduleText,
+
+    submit,
+  };
+}
+</file>
+
 <file path="app/sessions/screens/SessionsScreen.tsx">
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -21482,108 +22161,6 @@ export default function SessionsScreen() {
 
 <file path="app/signup.tsx">
 
-</file>
-
-<file path="server/models/Session.js">
-// server/models/Session.js
-const mongoose = require("mongoose");
-
-const SessionSchema = new mongoose.Schema(
-  {
-    mentorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-    learnerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-
-    skill: { type: String, required: true, trim: true },
-    level: { type: String, default: "Not specified", trim: true },
-
-    scheduledAt: { type: Date, required: true },
-
-    status: {
-      type: String,
-      enum: ["requested", "accepted", "rejected", "cancelled", "completed"],
-      default: "requested",
-      index: true,
-    },
-
-    joinedAt: { type: Date, default: null },
-    joinedBy: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] },
-    ],
-
-    completedAt: { type: Date, default: null },
-    cancelledAt: { type: Date, default: null },
-
-    // ✅ cancellation meta
-    cancelReason: { type: String, default: "", trim: true },
-    cancelledBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    // ✅ message for the other side when someone "deletes"
-    deleteNotice: { type: String, default: "", trim: true },
-
-    // ✅ Soft delete (hide for me)
-    hiddenFor: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] },
-    ],
-
-    note: { type: String, default: "", trim: true },
-
-    // legacy/simple rating (kept)
-    rating: { type: Number, min: 1, max: 5, default: null },
-    feedback: { type: String, default: "", trim: true },
-
-    // ---------------- Session Room additions (NEW) ----------------
-
-    // Chat messages stored inside the session (simple & fast)
-    // shape: { _id, senderId, text, createdAt }
-    chat: { type: Array, default: [] },
-
-    // Uploaded files stored inside the session
-    // shape: { _id, uploaderId, name, url, createdAt }
-    files: { type: Array, default: [] },
-
-    // Zoom link for this session (optional)
-    zoomJoinUrl: { type: String, default: "", trim: true },
-  },
-  { timestamps: true }
-);
-
-SessionSchema.index({ mentorId: 1, scheduledAt: 1 });
-SessionSchema.index({ learnerId: 1, scheduledAt: 1 });
-SessionSchema.index({ hiddenFor: 1, scheduledAt: -1 });
-
-module.exports = mongoose.model("Session", SessionSchema);
-</file>
-
-<file path="server/package.json">
-{
-  "name": "skillswap-backend",
-  "version": "1.0.0",
-  "main": "server.js",
-  "type": "commonjs",
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.0.1",
-    "multer": "^2.0.2",
-    "openai": "^6.10.0",
-    "socket.io": "^4.8.3"
-  }
-}
 </file>
 
 <file path="server/routes/chat.js">
@@ -21992,251 +22569,6 @@ export default function TabHome() {
 }
 </file>
 
-<file path="app/sessions/api/sessionsApi.ts">
-// app/sessions/api/sessionsApi.ts
-import { API_URL } from "../../../lib/api";
-
-export type SessionStatus =
-  | "requested"
-  | "accepted"
-  | "rejected"
-  | "cancelled"
-  | "completed";
-
-export type PickedUser = {
-  id: string;
-  fullName: string;
-  email: string;
-  points?: number;
-  xp?: number;
-  streak?: number;
-  avgRating?: number;
-  ratingCount?: number;
-};
-
-export type SessionChatMsg = {
-  _id: string;
-  senderId: string;
-  text: string;
-  createdAt: string;
-};
-
-export type SessionFileDTO = {
-  _id: string;
-  uploaderId: string;
-  name: string;
-  url: string; // غالباً /uploads/...
-  createdAt: string;
-};
-
-export type SessionDTO = {
-  _id: string;
-
-  mentorId: any;
-  learnerId: any;
-
-  mentor?: PickedUser | null;
-  learner?: PickedUser | null;
-
-  skill: string;
-  level: string;
-  scheduledAt: string;
-  status: SessionStatus;
-
-  note?: string;
-
-  joinedAt?: string | null;
-  joinedBy?: any[];
-
-  completedAt?: string | null;
-  cancelledAt?: string | null;
-  cancelReason?: string | null;
-  cancelledBy?: any | null;
-
-  deleteNotice?: string | null;
-  hiddenFor?: any[];
-
-  rating?: number | null;
-  feedback?: string;
-
-  // ✅ Session Room additions (optional حتى ما نكسر القديم)
-  chat?: SessionChatMsg[];
-  files?: SessionFileDTO[];
-  zoomJoinUrl?: string;
-};
-
-async function apiFetch<T>(
-  path: string,
-  token: string,
-  init?: RequestInit
-): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init?.headers || {}),
-    },
-  });
-
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (json as any)?.error || "Request failed";
-    const err: any = new Error(msg);
-    err.status = res.status;
-    err.body = json;
-    throw err;
-  }
-  return json as T;
-}
-
-export async function listMySessions(token: string): Promise<SessionDTO[]> {
-  const r = await apiFetch<{ sessions: SessionDTO[] }>(
-    "/api/sessions/mine",
-    token
-  );
-  return r.sessions || [];
-}
-
-export type RequestSessionPayload = {
-  mentorId: string;
-  skill: string;
-  level: string;
-  scheduledAt: string; // ISO
-  note?: string;
-};
-
-export async function requestSession(
-  token: string,
-  payload: RequestSessionPayload
-): Promise<SessionDTO> {
-  const r = await apiFetch<{ session: SessionDTO }>("/api/sessions", token, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  return r.session;
-}
-
-export async function updateSessionStatus(
-  token: string,
-  sessionId: string,
-  status: SessionStatus
-): Promise<SessionDTO> {
-  const r = await apiFetch<{ session: SessionDTO }>(
-    `/api/sessions/${sessionId}/status`,
-    token,
-    { method: "PATCH", body: JSON.stringify({ status }) }
-  );
-  return r.session;
-}
-
-export async function joinSession(
-  token: string,
-  sessionId: string
-): Promise<SessionDTO> {
-  const r = await apiFetch<{ session: SessionDTO }>(
-    `/api/sessions/${sessionId}/join`,
-    token,
-    { method: "POST" }
-  );
-  return r.session;
-}
-
-export async function rateSession(
-  token: string,
-  sessionId: string,
-  payload: { rating: number; feedback?: string }
-): Promise<{ ok: boolean; rating: number | null }> {
-  return apiFetch(`/api/sessions/${sessionId}/rate`, token, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-// ✅ Smart Delete
-export async function deleteSessionSmart(
-  token: string,
-  sessionId: string
-): Promise<{ ok: boolean; action: string }> {
-  return apiFetch(`/api/sessions/${sessionId}/delete`, token, { method: "POST" });
-}
-
-export async function getSessionById(
-  token: string,
-  sessionId: string
-): Promise<SessionDTO> {
-  const r = await apiFetch<{ session: SessionDTO }>(
-    `/api/sessions/${sessionId}`,
-    token
-  );
-  return r.session;
-}
-
-// ---------------- Session Room: CHAT ----------------
-export async function listSessionChat(
-  token: string,
-  sessionId: string
-): Promise<SessionChatMsg[]> {
-  const r = await apiFetch<{ messages: SessionChatMsg[] }>(
-    `/api/sessions/${sessionId}/chat`,
-    token
-  );
-  return r.messages || [];
-}
-
-export async function sendSessionChat(
-  token: string,
-  sessionId: string,
-  text: string
-): Promise<SessionChatMsg> {
-  const r = await apiFetch<{ message: SessionChatMsg }>(
-    `/api/sessions/${sessionId}/chat`,
-    token,
-    { method: "POST", body: JSON.stringify({ text }) }
-  );
-  return r.message;
-}
-
-// ---------------- Session Room: FILES ----------------
-export async function listSessionFiles(
-  token: string,
-  sessionId: string
-): Promise<SessionFileDTO[]> {
-  const r = await apiFetch<{ files: SessionFileDTO[] }>(
-    `/api/sessions/${sessionId}/files`,
-    token
-  );
-  return r.files || [];
-}
-
-// multipart upload
-export async function uploadSessionFile(
-  token: string,
-  sessionId: string,
-  file: { uri: string; name: string; mimeType: string }
-): Promise<SessionFileDTO> {
-  const form = new FormData();
-  // @ts-ignore
-  form.append("file", { uri: file.uri, name: file.name, type: file.mimeType });
-
-  const res = await fetch(`${API_URL}/api/sessions/${sessionId}/files`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      // مهم: لا تضع Content-Type
-    } as any,
-    body: form,
-  });
-
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (json as any)?.error || "Upload failed";
-    throw new Error(msg);
-  }
-  return (json as any).file as SessionFileDTO;
-}
-</file>
-
 <file path="lib/api.ts">
 // lib/api.ts
 import Constants from "expo-constants";
@@ -22492,6 +22824,88 @@ export async function getPublicUserProfile(token: string, userId: string): Promi
 }
 </file>
 
+<file path="server/models/Session.js">
+// server/models/Session.js
+const mongoose = require("mongoose");
+
+const SessionSchema = new mongoose.Schema(
+  {
+    mentorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    learnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    skill: { type: String, required: true, trim: true },
+    level: { type: String, default: "Not specified", trim: true },
+
+    scheduledAt: { type: Date, required: true },
+
+    status: {
+      type: String,
+      enum: ["requested", "accepted", "rejected", "cancelled", "completed"],
+      default: "requested",
+      index: true,
+    },
+
+    joinedAt: { type: Date, default: null },
+    joinedBy: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] },
+    ],
+
+    completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
+
+    // ✅ cancellation meta
+    cancelReason: { type: String, default: "", trim: true },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    // ✅ message for the other side when someone "deletes"
+    deleteNotice: { type: String, default: "", trim: true },
+
+    // ✅ Soft delete (hide for me)
+    hiddenFor: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User", default: [] },
+    ],
+
+    note: { type: String, default: "", trim: true },
+
+    // legacy/simple rating (kept)
+    rating: { type: Number, min: 1, max: 5, default: null },
+    feedback: { type: String, default: "", trim: true },
+
+    // ---------------- Session Room additions (NEW) ----------------
+
+    // Chat messages stored inside the session (simple & fast)
+    // shape: { _id, senderId, text, createdAt }
+    chat: { type: Array, default: [] },
+
+    // Uploaded files stored inside the session
+    // shape: { _id, uploaderId, name, url, createdAt }
+    files: { type: Array, default: [] },
+
+    // Zoom link for this session (optional)
+    zoomJoinUrl: { type: String, default: "", trim: true },
+  },
+  { timestamps: true }
+);
+
+SessionSchema.index({ mentorId: 1, scheduledAt: 1 });
+SessionSchema.index({ learnerId: 1, scheduledAt: 1 });
+SessionSchema.index({ hiddenFor: 1, scheduledAt: -1 });
+
+module.exports = mongoose.model("Session", SessionSchema);
+</file>
+
 <file path="server/models/User.js">
 const mongoose = require("mongoose");
 
@@ -22556,6 +22970,26 @@ const UserSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("User", UserSchema);
+</file>
+
+<file path="server/package.json">
+{
+  "name": "skillswap-backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.0.1",
+    "multer": "^2.0.2",
+    "openai": "^6.10.0",
+    "socket.io": "^4.8.3"
+  }
+}
 </file>
 
 <file path="app/screens/HomeScreen.tsx">
@@ -23280,6 +23714,282 @@ const styles = StyleSheet.create({
   },
   logoutText: { color: "#E5E7EB", fontSize: 12, fontWeight: "800" },
 });
+</file>
+
+<file path="app/sessions/api/sessionsApi.ts">
+// app/sessions/api/sessionsApi.ts
+import { API_URL } from "../../../lib/api";
+
+export type SessionStatus =
+  | "requested"
+  | "accepted"
+  | "rejected"
+  | "cancelled"
+  | "completed";
+
+export type PickedUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  points?: number;
+  xp?: number;
+  streak?: number;
+  avgRating?: number;
+  ratingCount?: number;
+};
+
+export type SessionChatMsg = {
+  _id: string;
+  senderId: string;
+  text: string;
+  createdAt: string;
+};
+
+export type SessionFileDTO = {
+  _id: string;
+  uploaderId: string;
+  name: string;
+  url: string; // غالباً /uploads/...
+  createdAt: string;
+};
+
+export type SessionDTO = {
+  _id: string;
+
+  mentorId: any;
+  learnerId: any;
+
+  mentor?: PickedUser | null;
+  learner?: PickedUser | null;
+
+  skill: string;
+  level: string;
+  scheduledAt: string;
+  status: SessionStatus;
+
+  note?: string;
+
+  joinedAt?: string | null;
+  joinedBy?: any[];
+
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  cancelledBy?: any | null;
+
+  deleteNotice?: string | null;
+  hiddenFor?: any[];
+
+  rating?: number | null;
+  feedback?: string;
+
+  // ✅ Session Room additions (optional حتى ما نكسر القديم)
+  chat?: SessionChatMsg[];
+  files?: SessionFileDTO[];
+  zoomJoinUrl?: string;
+};
+
+async function apiFetch<T>(
+  path: string,
+  token: string,
+  init?: RequestInit
+): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers || {}),
+    },
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (json as any)?.error || "Request failed";
+    const err: any = new Error(msg);
+    err.status = res.status;
+    err.body = json;
+    throw err;
+  }
+  return json as T;
+}
+
+export async function listMySessions(token: string): Promise<SessionDTO[]> {
+  const r = await apiFetch<{ sessions: SessionDTO[] }>(
+    "/api/sessions/mine",
+    token
+  );
+  return r.sessions || [];
+}
+
+export type RequestSessionPayload = {
+  mentorId: string;
+  skill: string;
+  level: string;
+  scheduledAt: string; // ISO
+  note?: string;
+};
+
+export async function requestSession(
+  token: string,
+  payload: RequestSessionPayload
+): Promise<SessionDTO> {
+  const r = await apiFetch<{ session: SessionDTO }>("/api/sessions", token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return r.session;
+}
+
+export async function updateSessionStatus(
+  token: string,
+  sessionId: string,
+  status: SessionStatus
+): Promise<SessionDTO> {
+  const r = await apiFetch<{ session: SessionDTO }>(
+    `/api/sessions/${sessionId}/status`,
+    token,
+    { method: "PATCH", body: JSON.stringify({ status }) }
+  );
+  return r.session;
+}
+
+export async function joinSession(
+  token: string,
+  sessionId: string
+): Promise<SessionDTO> {
+  const r = await apiFetch<{ session: SessionDTO }>(
+    `/api/sessions/${sessionId}/join`,
+    token,
+    { method: "POST" }
+  );
+  return r.session;
+}
+
+export async function rateSession(
+  token: string,
+  sessionId: string,
+  payload: { rating: number; feedback?: string }
+): Promise<{ ok: boolean; rating: number | null }> {
+  return apiFetch(`/api/sessions/${sessionId}/rate`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ✅ Smart Delete
+export async function deleteSessionSmart(
+  token: string,
+  sessionId: string
+): Promise<{ ok: boolean; action: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/delete`, token, { method: "POST" });
+}
+
+export async function getSessionById(
+  token: string,
+  sessionId: string
+): Promise<SessionDTO> {
+  const r = await apiFetch<{ session: SessionDTO }>(
+    `/api/sessions/${sessionId}`,
+    token
+  );
+  return r.session;
+}
+
+// ---------------- Session Room: CHAT ----------------
+export async function listSessionChat(
+  token: string,
+  sessionId: string
+): Promise<SessionChatMsg[]> {
+  const r = await apiFetch<{ messages: SessionChatMsg[] }>(
+    `/api/sessions/${sessionId}/chat`,
+    token
+  );
+  return r.messages || [];
+}
+
+export async function sendSessionChat(
+  token: string,
+  sessionId: string,
+  text: string
+): Promise<SessionChatMsg> {
+  const r = await apiFetch<{ message: SessionChatMsg }>(
+    `/api/sessions/${sessionId}/chat`,
+    token,
+    { method: "POST", body: JSON.stringify({ text }) }
+  );
+  return r.message;
+}
+
+// ---------------- Session Room: FILES ----------------
+export async function listSessionFiles(
+  token: string,
+  sessionId: string
+): Promise<SessionFileDTO[]> {
+  const r = await apiFetch<{ files: SessionFileDTO[] }>(
+    `/api/sessions/${sessionId}/files`,
+    token
+  );
+  return r.files || [];
+}
+
+// multipart upload
+export async function uploadSessionFile(
+  token: string,
+  sessionId: string,
+  file: { uri: string; name: string; mimeType: string }
+): Promise<SessionFileDTO> {
+  const form = new FormData();
+  // @ts-ignore
+  form.append("file", { uri: file.uri, name: file.name, type: file.mimeType });
+
+  const res = await fetch(`${API_URL}/api/sessions/${sessionId}/files`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      // مهم: لا تضع Content-Type
+    } as any,
+    body: form,
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (json as any)?.error || "Upload failed";
+    throw new Error(msg);
+  }
+  return (json as any).file as SessionFileDTO;
+}
+// ---------------- Session Room: ZOOM ----------------
+export async function ensureZoomMeeting(
+  token: string,
+  sessionId: string
+): Promise<{ zoomJoinUrl: string }> {
+  // إذا عندك endpoint ثاني للزوم غيّر المسار هون فقط
+  return apiFetch<{ zoomJoinUrl: string }>(`/api/sessions/${sessionId}/zoom`, token, {
+    method: "POST",
+  });
+}
+
+// ---------------- Session Room: TYPING ----------------
+export async function setSessionTyping(
+  token: string,
+  sessionId: string,
+  isTyping: boolean
+): Promise<{ ok: boolean }> {
+  // إذا عندك endpoint ثاني للتايبينغ غيّر المسار هون فقط
+  return apiFetch<{ ok: boolean }>(`/api/sessions/${sessionId}/chat/typing`, token, {
+    method: "POST",
+    body: JSON.stringify({ isTyping }),
+  });
+}
+
+export async function getSessionTyping(
+  token: string,
+  sessionId: string
+): Promise<{ typingUserIds: string[] }> {
+  // إذا ما عندك backend للتايبينغ هسا، عادي — بس لازم يرجّع typingUserIds لاحقاً
+  return apiFetch<{ typingUserIds: string[] }>(`/api/sessions/${sessionId}/chat/typing`, token);
+}
 </file>
 
 <file path="app/sessions/components/SessionCard.tsx">
