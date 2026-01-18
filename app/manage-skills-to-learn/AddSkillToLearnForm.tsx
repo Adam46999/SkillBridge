@@ -216,15 +216,12 @@ export default AddSkillToLearnForm;
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
 
   headerRow: {
@@ -235,13 +232,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#111827",
+    color: "#F9FAFB",
   },
   badge: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#374151",
-    backgroundColor: "#e5e7eb",
+    color: "#E5E7EB",
+    backgroundColor: "#1E293B",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
@@ -249,7 +246,7 @@ const styles = StyleSheet.create({
 
   subtitle: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "#94A3B8",
     marginTop: 6,
     marginBottom: 10,
     lineHeight: 18,
@@ -258,7 +255,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#4b5563",
+    color: "#94A3B8",
     marginBottom: 6,
   },
 
@@ -273,8 +270,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#f9fafb",
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
   },
   levelPillActive: {
     backgroundColor: "#2563eb",
@@ -282,7 +279,7 @@ const styles = StyleSheet.create({
   },
   levelPillText: {
     fontSize: 12,
-    color: "#374151",
+    color: "#E5E7EB",
     fontWeight: "800",
   },
   levelPillTextActive: {
@@ -298,27 +295,27 @@ const styles = StyleSheet.create({
   clearText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#2563eb",
+    color: "#60A5FA",
   },
 
   input: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
     paddingHorizontal: 10,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#f9fafb",
+    color: "#E5E7EB",
+    backgroundColor: "#0B1120",
   },
   inputError: {
-    borderColor: "#fca5a5",
-    backgroundColor: "#fff1f2",
+    borderColor: "#EF4444",
+    backgroundColor: "#450A0A",
   },
 
   errorText: {
     fontSize: 12,
-    color: "#b91c1c",
+    color: "#FCA5A5",
     marginTop: 6,
   },
 
@@ -338,17 +335,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#2563eb",
   },
   primaryButtonText: {
-    color: "#f9fafb",
+    color: "#ffffff",
     fontSize: 13,
     fontWeight: "900",
   },
   secondaryButton: {
     borderWidth: 1,
-    borderColor: "#9ca3af",
-    backgroundColor: "#ffffff",
+    borderColor: "#334155",
+    backgroundColor: "#020617",
   },
   secondaryButtonText: {
-    color: "#374151",
+    color: "#E5E7EB",
     fontSize: 13,
     fontWeight: "800",
   },
@@ -364,12 +361,12 @@ const styles = StyleSheet.create({
   },
   suggestionsTitle: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#94A3B8",
     fontWeight: "800",
   },
   suggestionsHint: {
     fontSize: 11,
-    color: "#9ca3af",
+    color: "#64748B",
     fontWeight: "700",
   },
   suggestionsRow: {

@@ -387,7 +387,7 @@ export default function HomeScreen() {
           onToggle={() => setSetupOpen((v) => !v)}
         >
           {/* Learn */}
-          <View style={styles.section}>
+          <View style={[styles.section, styles.sectionBackground]}>
             <SectionHeader
               icon="📚"
               title="Skills you want to learn"
@@ -395,22 +395,16 @@ export default function HomeScreen() {
               onAction={handleGoLearn}
             />
             {user?.skillsToLearn?.length ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipsRow}
-              >
+              <View style={{ gap: 8 }}>
                 {user.skillsToLearn.map((skill, idx) => (
-                  <View key={`${skill.name}-${idx}`} style={styles.chip}>
-                    <Text style={styles.chipText}>
-                      {skill.name}
-                      {skill.level && skill.level !== "Not specified"
-                        ? ` · ${skill.level}`
-                        : ""}
+                  <View key={`${skill.name}-${idx}`} style={styles.teachCard}>
+                    <Text style={styles.teachName}>{skill.name}</Text>
+                    <Text style={styles.teachLevel}>
+                      Level: {skill.level || "Not specified"}
                     </Text>
                   </View>
                 ))}
-              </ScrollView>
+              </View>
             ) : (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyTitle}>No learning goals yet</Text>
@@ -430,7 +424,7 @@ export default function HomeScreen() {
           </View>
 
           {/* Availability */}
-          <View style={styles.section}>
+          <View style={[styles.section, styles.sectionBackground]}>
             <SectionHeader
               icon="⏰"
               title="Your weekly availability"
@@ -504,6 +498,11 @@ export default function HomeScreen() {
             open={teachOpen}
             onToggle={() => setTeachOpen((v) => !v)}
           >
+            <SectionHeader
+              title=""
+              actionLabel="Manage"
+              onAction={handleGoTeach}
+            />
             {user?.skillsToTeach?.length ? (
               <View style={{ gap: 8 }}>
                 {user.skillsToTeach.map((skill, idx) => (
@@ -607,8 +606,19 @@ const styles = StyleSheet.create({
   activityText: { color: "#9CA3AF", fontSize: 12, lineHeight: 18 },
 
   section: { marginBottom: 18 },
+  sectionBackground: {
+    backgroundColor: "#000000",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+  },
 
-  chipsRow: { paddingVertical: 4, paddingRight: 4, gap: 8 },
+  chipsRow: { 
+    paddingVertical: 4, 
+    paddingRight: 4,
+    flexDirection: 'row',
+  },
   chip: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -617,8 +627,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1E293B",
     marginRight: 8,
+    flexShrink: 0,
   },
-  chipText: { color: "#E5E7EB", fontSize: 12, fontWeight: "700" },
+  chipText: { 
+    color: "#E5E7EB", 
+    fontSize: 12, 
+    fontWeight: "700",
+    flexShrink: 0,
+  },
 
   emptyCard: {
     backgroundColor: "#020617",
