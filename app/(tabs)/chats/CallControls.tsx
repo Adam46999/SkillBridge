@@ -423,7 +423,7 @@ export default function CallControls({ peerId, peerName, conversationId, initial
           callConnectedRef.current = true;
           try {
             lastLocalCallStartedAtRef.current = Date.now();
-            sendCallStarted(conversationId, peerId);
+            if (conversationId) sendCallStarted(conversationId, peerId);
           } catch {}
           stopAllRinging("ICE connected");
         }
@@ -520,9 +520,9 @@ export default function CallControls({ peerId, peerName, conversationId, initial
 
   return (
     <View style={{ gap: 8, position: 'relative' }}>
-      <div style={{ display: "flex", gap: 8 }}>
-        <video ref={localVideoRef as any} autoPlay muted playsInline style={{ width: 160, height: 120, backgroundColor: "#000" }} />
-        <video ref={remoteVideoRef as any} autoPlay playsInline style={{ width: 320, height: 240, backgroundColor: "#000" }} />
+      <div style={{ display: "flex", gap: 8, position: "fixed", top: 80, left: 16, zIndex: 1000 }}>
+        <video ref={localVideoRef as any} autoPlay muted playsInline style={{ width: 160, height: 120, backgroundColor: "#000", borderRadius: 8 }} />
+        <video ref={remoteVideoRef as any} autoPlay playsInline style={{ width: 320, height: 240, backgroundColor: "#000", borderRadius: 8 }} />
       </div>
 
       {/* 🎨 FIXED POSITIONING: incoming call modal positioned at the very top */}
@@ -701,22 +701,18 @@ export default function CallControls({ peerId, peerName, conversationId, initial
           </div>
         </div>
       )}
-      {ringing && !incomingOffer && (
-        <div style={{ position: "absolute", left: 16, top: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(4,6,23,0.8)", padding: 8, borderRadius: 12, border: "1px solid #16324a" }}>
-            <div style={{ width: 14, height: 14, borderRadius: 7, background: "#10B981", boxShadow: pulse ? "0 0 12px rgba(16,185,129,0.6)" : "none", transition: "box-shadow 0.25s" }} />
-            <div style={{ color: "#E2E8F0", fontWeight: 700 }}>{peerName ? `Ringing ${peerName}` : "Ringing..."}</div>
-          </div>
-        </div>
-      )}
 
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-        <Button title={ringing ? "Ringing…" : callActive ? "In Call" : "Start Call"} onPress={startCall} disabled={callActive || ringing} />
-        <Button title={callActive || ringing ? "Hang Up" : "Close"} onPress={hangUp} color="#c33" />
-        <div style={{ display: "flex", alignItems: "center", paddingLeft: 8 }}>
-          <div style={{ color: "#94a3b8", fontWeight: 700 }}>{callActive ? `Duration ${elapsed}` : ""}</div>
+      <div style={{ position: "fixed", bottom: "auto", top: 250, left: 16, zIndex: 1000 }}>
+        <div style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <Button title={ringing ? "Ringing…" : callActive ? "In Call" : "Start Call"} onPress={startCall} disabled={callActive || ringing} />
+          <Button title={callActive || ringing ? "Hang Up" : "Close"} onPress={hangUp} color="#c33" />
         </div>
-      </View>
+        {callActive && (
+          <div style={{ color: "#94a3b8", fontSize: 14, fontWeight: 600 }}>
+            Duration {elapsed}
+          </div>
+        )}
+      </div>
     </View>
   );
 }
