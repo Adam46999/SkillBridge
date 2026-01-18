@@ -132,20 +132,15 @@ async function createSessionRating({ fromUserId, sessionId, score, comment }) {
     // Update avg rating & count
     const updatedUser = await recomputeAndSaveAvg(toUserId, mongoSession);
 
-    // High rating bonus (bonus goes to the rated person)
-    const threshold = rules?.RATING?.HIGH_SCORE_THRESHOLD ?? 4;
-    const bonus = rules?.POINTS?.HIGH_RATING_BONUS ?? 0;
-
-    if (bonus > 0 && rating.score >= threshold) {
-      // pointsService is idempotent by (userId+reason+sessionId)
-      await addPoints(
-        toUserId,
-        bonus,
-        rules.REASONS.HIGH_RATING_BONUS,
-        sessId,
-        { mongoSession }
-      );
-    }
+    // Award points directly based on rating score (10-50 points)
+    // The rating score IS the points to award
+    await addPoints(
+      toUserId,
+      rating.score, // Award the exact rating score as points
+      rules.REASONS.HIGH_RATING_BONUS, // Reuse this reason for consistency
+      sessId,
+      { mongoSession }
+    );
 
     await mongoSession.commitTransaction();
     mongoSession.endSession();

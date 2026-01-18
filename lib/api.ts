@@ -277,3 +277,23 @@ export async function uploadConversationFile(
 
   return handleResponse(res);
 }
+
+// ---------- USER RATINGS ----------
+export type UserRating = {
+  id: string;
+  score: number;
+  comment: string;
+  fromUser: {
+    id: string;
+    fullName: string;
+  };
+  createdAt: string;
+};
+
+export async function getUserRatings(token: string, userId: string): Promise<UserRating[]> {
+  const res = await fetch(`${API_URL}/api/ratings/user/${userId}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(res);
+}

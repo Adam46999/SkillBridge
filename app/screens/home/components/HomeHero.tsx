@@ -10,6 +10,7 @@ type Props = {
   nextLine: string;
   onPrimary: () => void; // Find mentor
   onSecondary: () => void; // Sessions
+  onAvatarPress?: () => void; // Navigate to profile
 };
 
 export default function HomeHero({
@@ -21,6 +22,7 @@ export default function HomeHero({
   nextLine,
   onPrimary,
   onSecondary,
+  onAvatarPress,
 }: Props) {
   return (
     <View style={styles.card}>
@@ -51,9 +53,14 @@ export default function HomeHero({
           </View>
         </View>
 
-        <View style={styles.avatar}>
+        <TouchableOpacity
+          style={styles.avatar}
+          onPress={onAvatarPress}
+          activeOpacity={0.85}
+          disabled={!onAvatarPress}
+        >
           <Text style={styles.avatarText}>{initials}</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.bottom}>

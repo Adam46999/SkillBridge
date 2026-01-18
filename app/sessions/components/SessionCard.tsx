@@ -172,7 +172,7 @@ export default function SessionCard({
   const [busy, setBusy] = useState(false);
 
   const [rateOpen, setRateOpen] = useState(false);
-  const [rateValue, setRateValue] = useState("5");
+  const [rateValue, setRateValue] = useState("30");
   const [rateFeedback, setRateFeedback] = useState("");
 
   // ✅ FIX (no behavior change): stable id fallback
@@ -389,8 +389,8 @@ export default function SessionCard({
     if (!sessionId) return Alert.alert("Missing id", "This session has no id.");
 
     const n = Number(rateValue);
-    if (!Number.isFinite(n) || n < 1 || n > 5) {
-      Alert.alert("Invalid rating", "Please choose 1 to 5.");
+    if (!Number.isFinite(n) || n < 10 || n > 50) {
+      Alert.alert("Invalid points", "Please enter points between 10 and 50.");
       return;
     }
 
@@ -474,6 +474,19 @@ export default function SessionCard({
               </Text>
             )}
           </Text>
+          
+          {uiStatus === "completed" && (session as any).rating && (
+            <View style={{ marginTop: 8, gap: 4 }}>
+              <Text style={{ color: "#10B981", fontWeight: "700", fontSize: 14 }}>
+                ⭐ Rating: {(session as any).rating} points
+              </Text>
+              {(session as any).feedback && (
+                <Text style={{ color: "#94A3B8", fontSize: 13, fontStyle: "italic" }}>
+                  "{(session as any).feedback}"
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         <Badge text={badgeText} />
@@ -556,19 +569,20 @@ export default function SessionCard({
           />
         )}
 
-        <ActionBtn
-          label="Delete"
-          kind="neutral"
-          onPress={doSmartDelete}
-          disabled={busy}
-        />
+        {uiStatus !== "completed" && (
+          <ActionBtn
+            label="Delete"
+            kind="neutral"
+            onPress={doSmartDelete}
+            disabled={busy}
+          />
+        )}
 
         {busy && <ActivityIndicator />}
       </View>
 
       <Modal visible={rateOpen} transparent animationType="fade">
-        <Pressable
-          onPress={() => setRateOpen(false)}
+        <View
           style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.45)",
@@ -577,7 +591,7 @@ export default function SessionCard({
           }}
         >
           <Pressable
-            onPress={() => {}}
+            onPress={(e) => e.stopPropagation()}
             style={{
               backgroundColor: "#0B1220",
               borderRadius: 16,
@@ -588,18 +602,18 @@ export default function SessionCard({
             }}
           >
             <Text style={{ color: "#E2E8F0", fontWeight: "800", fontSize: 16 }}>
-              Rate session
+              Rate session with points
             </Text>
 
             <Text style={{ color: "#94A3B8" }}>
-              Choose 1–5 and optional feedback.
+              Award 10-50 points to the {isMentor ? "learner" : "mentor"} and add optional feedback.
             </Text>
 
             <TextInput
               value={rateValue}
               onChangeText={setRateValue}
               keyboardType="numeric"
-              placeholder="5"
+              placeholder="30"
               placeholderTextColor="#64748B"
               style={{
                 borderWidth: 1,
@@ -627,21 +641,39 @@ export default function SessionCard({
             />
 
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <ActionBtn
-                label="Cancel"
-                kind="neutral"
+              <Pressable
                 onPress={() => setRateOpen(false)}
                 disabled={busy}
-              />
-              <ActionBtn
-                label="Submit"
-                kind="primary"
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  backgroundColor: busy ? "#1F2937" : "#334155",
+                  opacity: busy ? 0.6 : 1,
+                  flex: 1,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>Cancel</Text>
+              </Pressable>
+              <Pressable
                 onPress={submitRate}
                 disabled={busy}
-              />
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  backgroundColor: busy ? "#1F2937" : "#10B981",
+                  opacity: busy ? 0.6 : 1,
+                  flex: 1,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>Submit</Text>
+              </Pressable>
             </View>
           </Pressable>
-        </Pressable>
+        </View>
       </Modal>
 
       <Text style={{ color: "#475569" }}>

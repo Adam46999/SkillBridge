@@ -17,6 +17,8 @@ import {
   PublicUserProfile,
   SkillTeach,
   getPublicUserProfile,
+  UserRating,
+  getUserRatings,
 } from "../../lib/api";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -134,6 +136,7 @@ export default function MentorProfileScreen() {
       : "";
 
   const [mentor, setMentor] = useState<MentorVM | null>(null);
+  const [ratings, setRatings] = useState<UserRating[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -156,6 +159,16 @@ export default function MentorProfileScreen() {
 
       const profile = await getPublicUserProfile(token, mentorId);
       setMentor(toMentorVM(profile));
+      
+      // Load ratings
+      try {
+        const userRatings = await getUserRatings(token, mentorId);
+        setRatings(userRatings);
+      } catch (e) {
+        console.warn("Failed to load ratings:", e);
+        // Don't fail the whole page if ratings fail
+        setRatings([]);
+      }
     } catch (e: any) {
       setErrorText(e?.message || "Failed to load mentor profile.");
     } finally {
@@ -417,6 +430,43 @@ export default function MentorProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ratings & Feedback</Text>
+          <Text style={styles.sectionSub}>
+            Recent ratings from learners ({ratings.length} total)
+          </Text>
+
+          {ratings.length > 0 ? (
+            <View style={styles.ratingsContainer}>
+              {ratings.map((rating) => (
+                <View key={rating.id} style={styles.ratingCard}>
+                  <View style={styles.ratingHeader}>
+                    <Text style={styles.ratingScore}>⭐ {rating.score} points</Text>
+                    <Text style={styles.ratingDate}>
+                      {new Date(rating.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text style={styles.ratingFrom}>
+                    From: {rating.fromUser.fullName}
+                  </Text>
+                  {rating.comment && (
+                    <Text style={styles.ratingComment}>
+                      "{rating.comment}"
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No ratings yet</Text>
+              <Text style={styles.emptyText}>
+                This mentor hasn't received any ratings from completed sessions yet.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Preferences</Text>
 
           <View style={styles.prefGrid}>
@@ -612,6 +662,40 @@ const styles = StyleSheet.create({
   availRowBorder: { borderBottomWidth: 1, borderBottomColor: "#0B1120" },
   availDay: { color: "#E5E7EB", fontSize: 13, fontWeight: "700" },
   availTime: { color: "#9CA3AF", fontSize: 13, fontWeight: "600" },
+
+  ratingsContainer: { gap: 12 },
+  ratingCard: {
+    backgroundColor: "#0B1120",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    gap: 6,
+  },
+  ratingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  ratingScore: {
+    color: "#10B981",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  ratingDate: {
+    color: "#64748B",
+    fontSize: 11,
+  },
+  ratingFrom: {
+    color: "#94A3B8",
+    fontSize: 12,
+  },
+  ratingComment: {
+    color: "#E2E8F0",
+    fontSize: 13,
+    fontStyle: "italic",
+    marginTop: 4,
+  },
 
   prefGrid: { flexDirection: "row", gap: 10 },
   prefBox: {

@@ -215,6 +215,29 @@ app.put("/api/me/profile", authMiddleware, async (req, res) => {
   }
 });
 
+app.put("/api/me/preferences", authMiddleware, async (req, res) => {
+  try {
+    const { languages, communicationModes } = req.body || {};
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      {
+        "preferences.languages": Array.isArray(languages) ? languages : [],
+        "preferences.communicationModes": Array.isArray(communicationModes)
+          ? communicationModes
+          : [],
+      },
+      { new: true }
+    ).select("-passwordHash");
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json({ user });
+  } catch (err) {
+    console.error("UPDATE PREFERENCES ERROR:", err);
+    return res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
 // =======================
 // MATCHING
 // =======================

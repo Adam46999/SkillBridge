@@ -145,6 +145,14 @@ export default function ProfileScreen() {
           />
         }
       >
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.push("/(tabs)")}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.backButtonText}>← Back to Home</Text>
+        </TouchableOpacity>
+
         <View style={styles.headerCard}>
           <Text style={styles.title}>Profile</Text>
           <Text style={styles.name}>{user?.fullName || "SkillSwap user"}</Text>
@@ -238,6 +246,20 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
+            onPress={() => router.push("/manage-preferences")}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>Preferences</Text>
+              <Text style={styles.rowSub}>
+                Languages & communication modes
+              </Text>
+            </View>
+            <Text style={styles.rowArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.rowBtn}
+            activeOpacity={0.85}
             onPress={() => router.push("/find-mentor")}
           >
             <View style={{ flex: 1 }}>
@@ -266,6 +288,18 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 32 },
+
+  backButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  backButtonText: {
+    color: "#60A5FA",
+    fontSize: 14,
+    fontWeight: "600",
+  },
 
   loadingScreen: {
     flex: 1,

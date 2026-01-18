@@ -318,6 +318,7 @@ export default function HomeScreen() {
           nextLine={nextLine}
           onPrimary={handleFindMentor}
           onSecondary={handleGoSessions}
+          onAvatarPress={() => router.push("/profile")}
         />
 
         {errorText ? (

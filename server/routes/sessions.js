@@ -9,7 +9,7 @@ const {
   deductPoints,
 } = require("../services/pointsService");
 const { POINTS, CANCEL, REASONS } = require("../services/gamificationRules");
-const { rateSession } = require("../services/ratingsService");
+const { createSessionRating } = require("../services/ratingsService");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
@@ -630,11 +630,11 @@ module.exports = function sessionsRouter(authMiddleware) {
       const rating = Number(req.body?.rating);
       const feedback = String(req.body?.feedback || "");
 
-      const result = await rateSession({
+      const result = await createSessionRating({
         sessionId: id,
-        userId,
-        rating,
-        feedback,
+        fromUserId: userId,
+        score: rating,
+        comment: feedback,
       });
       return res.json({ ok: true, rating: result?.rating || null });
     } catch (err) {
