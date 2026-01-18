@@ -48,6 +48,7 @@ import ChatHeader from "./(components)/ChatHeader";
 import CallControls from "./CallControls";
 import ChatInput from "./(components)/ChatInput";
 import MessagesList from "./(components)/MessagesList";
+import FileUploader, { FileUploaderHandle } from "./FileUploader";
 
 function toChatMessage(m: RealtimeMessage): ChatMessage {
   return {
@@ -82,7 +83,9 @@ export default function ConversationScreen() {
   const mountedRef = useRef(true);
 
   const [meId, setMeId] = useState("");
+  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
+  const fileUploaderRef = useRef<FileUploaderHandle>(null);
 
   const [items, setItems] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -144,6 +147,7 @@ export default function ConversationScreen() {
       return () => {};
     }
 
+    setToken(token);
     setLoading(true);
 
     const cleanupFns: ((() => void) | undefined)[] = [];
@@ -424,6 +428,18 @@ export default function ConversationScreen() {
     setShowCallControls(true);
   }, [peerId]);
 
+  const handleFileUpload = useCallback(() => {
+    fileUploaderRef.current?.triggerUpload?.();
+  }, []);
+
+  const handleFileUploaded = useCallback(() => {
+    // The socket will emit the new message, so we don't need to manually refresh
+    // But we can still trigger safeMarkRead if needed
+    if (token) {
+      void safeMarkRead(token);
+    }
+  }, [token, safeMarkRead]);
+
   if (loading) {
     return (
       <View
@@ -477,7 +493,20 @@ export default function ConversationScreen() {
         sending={sending}
         onChange={setText}
         onSend={send}
+        onFileUpload={handleFileUpload}
       />
+
+      {/* Hidden FileUploader component */}
+      {token && convId && (
+        <View style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}>
+          <FileUploader
+            ref={fileUploaderRef}
+            conversationId={convId}
+            token={token}
+            onUploaded={handleFileUploaded}
+          />
+        </View>
+      )}
 
       {showCallControls && (
         <View style={{ position: "absolute", bottom: 80, left: 12, right: 12 }}>

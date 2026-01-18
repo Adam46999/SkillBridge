@@ -15,9 +15,10 @@ type Props = {
   sending: boolean;
   onChange: (v: string) => void;
   onSend: () => void;
+  onFileUpload?: () => void;
 };
 
-export default function ChatInput({ value, sending, onChange, onSend }: Props) {
+export default function ChatInput({ value, sending, onChange, onSend, onFileUpload }: Props) {
   const canSend = useMemo(
     () => value.trim().length > 0 && !sending,
     [value, sending]
@@ -42,6 +43,21 @@ export default function ChatInput({ value, sending, onChange, onSend }: Props) {
 
   return (
     <View style={styles.bar}>
+      {onFileUpload && (
+        <Pressable
+          onPress={onFileUpload}
+          accessibilityRole="button"
+          accessibilityLabel="Upload file"
+          style={({ pressed }) => [
+            styles.attachBtn,
+            pressed ? { opacity: 0.7 } : null,
+          ]}
+          hitSlop={10}
+        >
+          <Text style={styles.attachIcon}>📎</Text>
+        </Pressable>
+      )}
+
       <View style={styles.inputWrap}>
         <TextInput
           value={value}
@@ -87,6 +103,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 10,
+  },
+
+  attachBtn: {
+    justifyContent: "center",
+    alignItems: "center",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#1E293B",
+  },
+
+  attachIcon: {
+    fontSize: 20,
   },
 
   inputWrap: {
