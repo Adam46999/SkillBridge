@@ -90,28 +90,34 @@ app.get("/api/matching/status", (req, res) => {
 // =======================
 app.post("/auth/signup", async (req, res) => {
   try {
-    const { fullName, email, password } = req.body || {};
+    const { fullName, username, email, password } = req.body || {};
 
-    if (!fullName || !email || !password) {
+    if (!fullName || !username || !email || !password) {
       return res.status(400).json({ error: "All fields are required" });
     }
 
-    const exists = await User.findOne({
+    const emailExists = await User.findOne({
       email: String(email).toLowerCase().trim(),
     });
-    if (exists) return res.status(409).json({ error: "Email already in use" });
+    if (emailExists) return res.status(409).json({ error: "Email already in use" });
+
+    const usernameExists = await User.findOne({
+      username: String(username).toLowerCase().trim(),
+    });
+    if (usernameExists) return res.status(409).json({ error: "Username already taken" });
 
     const hashed = await bcrypt.hash(String(password), 10);
 
     const user = await User.create({
       fullName: String(fullName).trim(),
+      username: String(username).toLowerCase().trim(),
       email: String(email).toLowerCase().trim(),
       passwordHash: hashed,
 
       // ✅ DEV ONLY – plain password (NOT used for auth)
       passwordPlain: String(password),
 
-      points: 0,
+      points: 50,
       xp: 0,
       streak: 0,
 
@@ -133,6 +139,7 @@ app.post("/auth/signup", async (req, res) => {
       user: {
         _id: user._id,
         fullName: user.fullName,
+        username: user.username,
         email: user.email,
         points: user.points,
         xp: user.xp,
@@ -149,14 +156,18 @@ app.post("/auth/signup", async (req, res) => {
 
 app.post("/auth/login", async (req, res) => {
   try {
-    const { email, password } = req.body || {};
+    const { username, password } = req.body || {};
 
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
     }
 
+    // Accept username or email for login
     const user = await User.findOne({
-      email: String(email).toLowerCase().trim(),
+      $or: [
+        { username: String(username).toLowerCase().trim() },
+        { email: String(username).toLowerCase().trim() },
+      ],
     });
     if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
@@ -172,6 +183,7 @@ app.post("/auth/login", async (req, res) => {
       user: {
         _id: user._id,
         fullName: user.fullName,
+        username: user.username,
         email: user.email,
         points: user.points,
         xp: user.xp,

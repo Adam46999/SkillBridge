@@ -19,16 +19,16 @@ import PasswordField from "../shared/PasswordField";
 import { mapApiError } from "../shared/mapApiError";
 import { authStyles } from "../shared/styles";
 import { useAuthFieldFocus } from "../shared/useAuthFieldFocus";
-import { validateEmail, validatePassword } from "../shared/validators";
+import { validatePassword, validateUsername } from "../shared/validators";
 
 type FieldErrors = {
-  email?: string;
+  username?: string;
   password?: string;
 };
 
 export const options = {
-  title: "Sign in",
-  headerTitle: "Sign in",
+  title: "Sign In",
+  headerTitle: "Sign In",
   headerShown: true,
 };
 
@@ -36,11 +36,11 @@ export default function LoginScreen() {
   const router = useRouter();
 
   const { register, focusNext } = useAuthFieldFocus([
-    "email",
+    "username",
     "password",
   ] as const);
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const [checkingSession, setCheckingSession] = useState(true);
@@ -79,10 +79,11 @@ export default function LoginScreen() {
 
   const canSubmit = useMemo(() => {
     if (checkingSession || loading) return false;
-    const e = validateEmail(email);
+    // Accept any non-empty username (can be username or email)
+    const u = username.trim().length >= 3;
     const p = validatePassword(password);
-    return e.ok && p.ok;
-  }, [checkingSession, loading, email, password]);
+    return u && p.ok;
+  }, [checkingSession, loading, username, password]);
 
   const clearBannerAndField = (k: keyof FieldErrors) => {
     setBannerError(null);
@@ -96,11 +97,11 @@ export default function LoginScreen() {
     setBannerError(null);
     setFieldErrors({});
 
-    const e = validateEmail(email);
+    const u = username.trim();
     const p = validatePassword(password);
 
     const nextErrors: FieldErrors = {};
-    if (!e.ok) nextErrors.email = e.error || "Please enter a valid email.";
+    if (u.length < 3) nextErrors.username = "Please enter your username or email.";
     if (!p.ok)
       nextErrors.password =
         p.error || "Password must be at least 6 characters.";
@@ -114,7 +115,7 @@ export default function LoginScreen() {
       setLoading(true);
 
       const res: any = await login({
-        email: e.value.toLowerCase(),
+        username: u,
         password: p.value,
       });
 
@@ -146,8 +147,8 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <AuthHeader
-            title="Sign in"
-            subtitle="Welcome back — continue learning where you left off."
+            title="Welcome to SkillBridge"
+            subtitle="Sign in to continue your learning journey and connect with mentors."
           />
 
           {checkingSession ? (
@@ -166,19 +167,19 @@ export default function LoginScreen() {
               ) : null}
 
               <AuthTextField
-                ref={register("email")}
-                label="Email"
-                value={email}
+                ref={register("username")}
+                label="Username or Email"
+                value={username}
                 onChangeText={(t) => {
-                  setEmail(t);
-                  clearBannerAndField("email");
+                  setUsername(t);
+                  clearBannerAndField("username");
                 }}
-                placeholder="you@example.com"
-                keyboardType="email-address"
+                placeholder="johndoe or john@example.com"
+                autoCapitalize="none"
                 returnKeyType="next"
-                onSubmitEditing={() => focusNext("email")}
+                onSubmitEditing={() => focusNext("username")}
                 editable={!loading}
-                errorText={fieldErrors.email}
+                errorText={fieldErrors.username}
               />
 
               <PasswordField
@@ -206,16 +207,16 @@ export default function LoginScreen() {
               </Pressable>
 
               <AuthButton
-                title={loading ? "Signing in…" : "Sign in"}
+                title={loading ? "Signing In…" : "Sign In"}
                 loading={loading}
                 disabled={!canSubmit}
                 onPress={onSubmit}
               />
 
               <View style={authStyles.linkRow}>
-                <Text style={authStyles.linkText}>Don’t have an account?</Text>
+                <Text style={authStyles.linkText}>Don't have an account?</Text>
                 <Link href="/(auth)/signup" style={authStyles.linkBtn}>
-                  Create one
+                  Create Account
                 </Link>
               </View>
             </>

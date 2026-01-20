@@ -440,6 +440,10 @@ export default function ConversationScreen() {
     }
   }, [token, safeMarkRead]);
 
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
+
   if (loading) {
     return (
       <View
@@ -466,7 +470,7 @@ export default function ConversationScreen() {
     >
       <ChatHeader
         title={peerName}
-        onBack={() => router.back()}
+        onBack={handleBack}
         conn={conn}
         peerTyping={peerTyping}
         peerOnline={peerOnline}

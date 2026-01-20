@@ -14,10 +14,12 @@ import {
   validateEmail,
   validateFullName,
   validatePassword,
+  validateUsername,
 } from "../shared/validators";
 
 type FieldErrors = {
   fullName?: string;
+  username?: string;
   email?: string;
   password?: string;
 };
@@ -26,11 +28,13 @@ export default function SignupScreen() {
   const router = useRouter();
   const { register, focusNext } = useAuthFieldFocus([
     "fullName",
+    "username",
     "email",
     "password",
   ] as const);
 
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -41,10 +45,11 @@ export default function SignupScreen() {
   const canSubmit = useMemo(() => {
     if (loading) return false;
     const n = validateFullName(fullName);
+    const u = validateUsername(username);
     const e = validateEmail(email);
     const p = validatePassword(password);
-    return n.ok && e.ok && p.ok;
-  }, [loading, fullName, email, password]);
+    return n.ok && u.ok && e.ok && p.ok;
+  }, [loading, fullName, username, email, password]);
 
   const clearBannerAndField = (k: keyof FieldErrors) => {
     setBannerError(null);
@@ -59,11 +64,13 @@ export default function SignupScreen() {
     setFieldErrors({});
 
     const n = validateFullName(fullName);
+    const u = validateUsername(username);
     const e = validateEmail(email);
     const p = validatePassword(password);
 
     const nextErrors: FieldErrors = {};
     if (!n.ok) nextErrors.fullName = n.error || "Please enter your full name.";
+    if (!u.ok) nextErrors.username = u.error || "Please enter a valid username.";
     if (!e.ok) nextErrors.email = e.error || "Please enter a valid email.";
     if (!p.ok)
       nextErrors.password =
@@ -79,6 +86,7 @@ export default function SignupScreen() {
 
       const res: any = await signup({
         fullName: n.value,
+        username: u.value,
         email: e.value.toLowerCase(),
         password: p.value,
       });
@@ -105,8 +113,8 @@ export default function SignupScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <AuthHeader
-          title="Create account"
-          subtitle="Join SkillSwap and start learning & teaching."
+          title="Create Account"
+          subtitle="Join SkillBridge and start your learning journey with 50 bonus points."
         />
 
         {bannerError ? (
@@ -117,17 +125,33 @@ export default function SignupScreen() {
 
         <AuthTextField
           ref={register("fullName")}
-          label="Full name"
+          label="Full Name"
           value={fullName}
           onChangeText={(t) => {
             setFullName(t);
             clearBannerAndField("fullName");
           }}
-          placeholder="Your name"
+          placeholder="John Doe"
           errorText={fieldErrors.fullName}
           editable={!loading}
           returnKeyType="next"
           onSubmitEditing={() => focusNext("fullName")}
+        />
+
+        <AuthTextField
+          ref={register("username")}
+          label="Username"
+          value={username}
+          onChangeText={(t) => {
+            setUsername(t);
+            clearBannerAndField("username");
+          }}
+          placeholder="johndoe"
+          autoCapitalize="none"
+          errorText={fieldErrors.username}
+          editable={!loading}
+          returnKeyType="next"
+          onSubmitEditing={() => focusNext("username")}
         />
 
         <AuthTextField
@@ -138,8 +162,9 @@ export default function SignupScreen() {
             setEmail(t);
             clearBannerAndField("email");
           }}
-          placeholder="name@example.com"
+          placeholder="john@example.com"
           keyboardType="email-address"
+          autoCapitalize="none"
           errorText={fieldErrors.email}
           editable={!loading}
           returnKeyType="next"
@@ -160,7 +185,7 @@ export default function SignupScreen() {
         />
 
         <AuthButton
-          title={loading ? "Creating…" : "Create account"}
+          title={loading ? "Creating Account…" : "Create Account"}
           loading={loading}
           disabled={!canSubmit}
           onPress={onSubmit}
@@ -169,7 +194,7 @@ export default function SignupScreen() {
         <View style={authStyles.linkRow}>
           <Text style={authStyles.linkText}>Already have an account?</Text>
           <Link href="/(auth)/login" style={authStyles.linkBtn}>
-            Sign in
+            Sign In
           </Link>
         </View>
       </ScrollView>

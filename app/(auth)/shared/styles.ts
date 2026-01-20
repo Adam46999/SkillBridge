@@ -4,6 +4,8 @@ export const authStyles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },
 
   content: {
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 16,
     paddingTop: 28,
     paddingBottom: 28,

@@ -257,7 +257,11 @@ export default function MentorProfileScreen() {
 
       router.push({
         pathname: "/(tabs)/chats/[conversationId]",
-        params: { conversationId },
+        params: { 
+          conversationId,
+          peerName: mentor.fullName,
+          peerId: mentor.id,
+        },
       });
     } catch (e: any) {
       console.warn("Open chat failed:", e?.message || e);

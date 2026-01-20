@@ -102,6 +102,7 @@ async function handleResponse(res: Response) {
 // ---------- AUTH ----------
 export async function signup(params: {
   fullName: string;
+  username: string;
   email: string;
   password: string;
 }) {
@@ -113,7 +114,7 @@ export async function signup(params: {
   return handleResponse(res);
 }
 
-export async function login(params: { email: string; password: string }) {
+export async function login(params: { username: string; password: string }) {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

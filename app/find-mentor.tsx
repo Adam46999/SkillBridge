@@ -193,7 +193,7 @@ export default function FindMentorScreen() {
   };
 
   // ✅ NEW: open chat directly
-  const openMentorChat = async (mentorId: string) => {
+  const openMentorChat = async (mentorId: string, mentorName: string) => {
     const token = await AsyncStorage.getItem("token");
     if (!token) {
       router.replace("/(auth)/login");
@@ -210,7 +210,11 @@ export default function FindMentorScreen() {
 
     router.push({
       pathname: "/(tabs)/chats/[conversationId]",
-      params: { conversationId },
+      params: { 
+        conversationId,
+        peerName: mentorName,
+        peerId: mentorId,
+      },
     });
   };
 
@@ -557,7 +561,7 @@ export default function FindMentorScreen() {
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.actionPrimary]}
                   activeOpacity={0.85}
-                  onPress={() => openMentorChat(m.mentorId)}
+                  onPress={() => openMentorChat(m.mentorId, m.fullName)}
                 >
                   <Text style={styles.actionPrimaryText}>Message</Text>
                 </TouchableOpacity>
