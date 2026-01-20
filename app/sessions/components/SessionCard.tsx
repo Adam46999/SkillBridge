@@ -240,7 +240,7 @@ export default function SessionCard({
 
   const canComplete = isMentor && uiStatus === "accepted" && completeCheck.ok && mentorJoined;
 
-  const canRate = (isMentor || isLearner) && uiStatus === "completed" && !(session as any).rating;
+  const canRate = isLearner && uiStatus === "completed" && !(session as any).rating;
 
   const setStatus = async (next: SessionStatus) => {
     if (!token) {
@@ -429,6 +429,7 @@ export default function SessionCard({
 
   const sessionDeleteNotice = (session as any)?.deleteNotice;
   const sessionCancelReason = (session as any)?.cancelReason;
+  const sessionCancelMessage = (session as any)?.cancelMessage;
 
   const cancelNotice = useMemo(() => {
     const st = String(uiStatus || "").toLowerCase();
@@ -438,14 +439,23 @@ export default function SessionCard({
     if (dn) return dn;
 
     const cr = String(sessionCancelReason || "").trim();
+    const cm = String(sessionCancelMessage || "").trim();
+    
+    // Use the custom message if available
+    if (cm) return cm;
+    
+    // Fallback to reason-based messages
     if (cr === "expired_request") return "This request expired automatically.";
     if (cr === "missed") return "Session time passed and was cancelled.";
+    if (cr === "missed_no_one_joined") return "Session cancelled - no one joined within 1 hour.";
+    if (cr === "no_show_learner") return "Session cancelled - learner didn't join within 30 minutes.";
+    if (cr === "no_show_mentor") return "Session cancelled - mentor didn't join within 30 minutes.";
     if (cr === "late_cancel") return "Cancelled late.";
     if (cr) return "Cancelled.";
 
     if (st === "rejected") return "This request was rejected.";
     return "Cancelled.";
-  }, [uiStatus, sessionDeleteNotice, sessionCancelReason]);
+  }, [uiStatus, sessionDeleteNotice, sessionCancelReason, sessionCancelMessage]);
 
   return (
     <View

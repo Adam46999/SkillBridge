@@ -36,6 +36,7 @@ const SessionSchema = new mongoose.Schema(
 
     // ✅ cancellation meta
     cancelReason: { type: String, default: "", trim: true },
+    cancelMessage: { type: String, default: "", trim: true },
     cancelledBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

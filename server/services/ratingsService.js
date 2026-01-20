@@ -95,7 +95,12 @@ async function createSessionRating({ fromUserId, sessionId, score, comment }) {
       throw httpError(403, "Not allowed");
     }
 
-    const toUserId = isMentor ? learnerId : mentorId;
+    // ✅ Only learner can rate mentor
+    if (!isLearner) {
+      throw httpError(403, "Only the learner can rate the mentor");
+    }
+
+    const toUserId = mentorId;
     if (!toUserId || !isValidObjectId(toUserId)) {
       throw httpError(500, "Invalid session participants");
     }
