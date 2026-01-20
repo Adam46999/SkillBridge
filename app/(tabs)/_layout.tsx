@@ -70,10 +70,16 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: "Explore",
+          title: "Profile",
           tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>🧭</Text>
+            <Text style={{ color, fontSize: 16 }}>👤</Text>
           ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push("/profile");
+          },
         }}
       />
       <Tabs.Screen
