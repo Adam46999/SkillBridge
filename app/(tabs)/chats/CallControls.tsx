@@ -394,6 +394,7 @@ export default function CallControls({ peerId, peerName, conversationId, initial
           },
         ],
         iceCandidatePoolSize: 10,
+        iceTransportPolicy: "relay", // FORCE relay-only for testing
       });
       pcRef.current = pc;
 
@@ -618,6 +619,7 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                         },
                       ],
                       iceCandidatePoolSize: 10,
+                      iceTransportPolicy: "relay", // FORCE relay-only for testing
                     });
                     pcRef.current = pc;
 
