@@ -53,11 +53,32 @@ export default function CallControls({ peerId, peerName, conversationId, initial
       const pc = pcRef.current;
       if (!pc) return;
       const stats = await pc.getStats();
+      
+      // Log ALL candidate pairs to see what failed
+      const candidatePairs: any[] = [];
+      const remoteCandidates: any[] = [];
+      
       stats.forEach((report: any) => {
+        if (report.type === "candidate-pair") {
+          candidatePairs.push(report);
+        }
+        if (report.type === "remote-candidate") {
+          remoteCandidates.push(report);
+        }
         if (["candidate-pair", "local-candidate", "remote-candidate", "transport", "inbound-rtp", "outbound-rtp"].includes(report.type)) {
           console.log(`[webrtc][stats][${tag}]`, report.type, report.id, report);
         }
       });
+      
+      // Summary of candidate pairs
+      if (candidatePairs.length > 0) {
+        console.log(`[webrtc][stats][${tag}] Found ${candidatePairs.length} candidate pairs:`);
+        candidatePairs.forEach(pair => {
+          console.log(`  - ${pair.state}: local=${pair.localCandidateId} remote=${pair.remoteCandidateId} nominated=${pair.nominated}`);
+        });
+      } else {
+        console.warn(`[webrtc][stats][${tag}] NO CANDIDATE PAIRS FOUND! Remote candidates: ${remoteCandidates.length}`);
+      }
     } catch (e) {
       console.warn("[webrtc][stats] failed to getStats", e);
     }
