@@ -379,37 +379,28 @@ export default function CallControls({ peerId, peerName, conversationId, initial
       const pc = new RTCPeerConnection({
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-          { urls: "stun:stun2.l.google.com:19302" },
-          { urls: "stun:stun3.l.google.com:19302" },
-          { urls: "stun:stun4.l.google.com:19302" },
           {
-            urls: [
-              "turn:openrelay.metered.ca:80",
-              "turn:openrelay.metered.ca:443",
-              "turn:openrelay.metered.ca:443?transport=tcp",
-            ],
+            urls: "turn:numb.viagenie.ca",
+            username: "webrtc@live.com",
+            credential: "muazkh",
+          },
+          {
+            urls: "turn:openrelay.metered.ca:80",
             username: "openrelayproject",
             credential: "openrelayproject",
           },
           {
-            urls: "turn:relay1.expressturn.com:3478",
-            username: "efDVPY8C0K2Y2FLS5K",
-            credential: "aF94HVQYDXOhMtqC",
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject",
           },
           {
-            urls: [
-              "turn:bn-turn1.xirsys.com:80?transport=udp",
-              "turn:bn-turn1.xirsys.com:3478?transport=udp",
-              "turn:bn-turn1.xirsys.com:80?transport=tcp",
-              "turn:bn-turn1.xirsys.com:3478?transport=tcp",
-              "turns:bn-turn1.xirsys.com:443?transport=tcp",
-              "turns:bn-turn1.xirsys.com:5349?transport=tcp",
-            ],
-            username: "ml0jh0qMKZKd9P_9C0UIBY2xRnZ5dJQ6K5XcdVKbEJf8lJDXSij7UMZRdzAz9j7TAAAAAGW_CMFyYWVk",
-            credential: "f6454e32-f5de-11ef-b0a4-0242ac120004",
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject",
           },
         ],
+        iceTransportPolicy: "relay",
         iceCandidatePoolSize: 10,
       });
       pcRef.current = pc;
@@ -622,37 +613,28 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     const pc = new RTCPeerConnection({
                       iceServers: [
                         { urls: "stun:stun.l.google.com:19302" },
-                        { urls: "stun:stun1.l.google.com:19302" },
-                        { urls: "stun:stun2.l.google.com:19302" },
-                        { urls: "stun:stun3.l.google.com:19302" },
-                        { urls: "stun:stun4.l.google.com:19302" },
                         {
-                          urls: [
-                            "turn:openrelay.metered.ca:80",
-                            "turn:openrelay.metered.ca:443",
-                            "turn:openrelay.metered.ca:443?transport=tcp",
-                          ],
+                          urls: "turn:numb.viagenie.ca",
+                          username: "webrtc@live.com",
+                          credential: "muazkh",
+                        },
+                        {
+                          urls: "turn:openrelay.metered.ca:80",
                           username: "openrelayproject",
                           credential: "openrelayproject",
                         },
                         {
-                          urls: "turn:relay1.expressturn.com:3478",
-                          username: "efDVPY8C0K2Y2FLS5K",
-                          credential: "aF94HVQYDXOhMtqC",
+                          urls: "turn:openrelay.metered.ca:443",
+                          username: "openrelayproject",
+                          credential: "openrelayproject",
                         },
                         {
-                          urls: [
-                            "turn:bn-turn1.xirsys.com:80?transport=udp",
-                            "turn:bn-turn1.xirsys.com:3478?transport=udp",
-                            "turn:bn-turn1.xirsys.com:80?transport=tcp",
-                            "turn:bn-turn1.xirsys.com:3478?transport=tcp",
-                            "turns:bn-turn1.xirsys.com:443?transport=tcp",
-                            "turns:bn-turn1.xirsys.com:5349?transport=tcp",
-                          ],
-                          username: "ml0jh0qMKZKd9P_9C0UIBY2xRnZ5dJQ6K5XcdVKbEJf8lJDXSij7UMZRdzAz9j7TAAAAAGW_CMFyYWVk",
-                          credential: "f6454e32-f5de-11ef-b0a4-0242ac120004",
+                          urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                          username: "openrelayproject",
+                          credential: "openrelayproject",
                         },
                       ],
+                      iceTransportPolicy: "relay",
                       iceCandidatePoolSize: 10,
                     });
                     pcRef.current = pc;
