@@ -661,6 +661,24 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                       }
                     };
 
+                    pc.onconnectionstatechange = () => {
+                      console.log("[webrtc][callee] connectionState", pc.connectionState);
+                      if (pc.connectionState === "connected") {
+                        if (!callStartTime) setCallStartTime(Date.now());
+                        callConnectedRef.current = true;
+                        stopAllRinging("connection established");
+                      }
+                      if (pc.connectionState === "failed") {
+                        console.warn("[webrtc][callee] connectionState failed");
+                        setTimeout(() => {
+                          try {
+                            dumpPcStats("callee-failed");
+                          } catch {}
+                          hangUp();
+                        }, 2000);
+                      }
+                    };
+
                     pc.oniceconnectionstatechange = () => {
                       console.log("[webrtc][callee] iceConnectionState", pc.iceConnectionState);
                       if (pc.iceConnectionState === "failed") {
