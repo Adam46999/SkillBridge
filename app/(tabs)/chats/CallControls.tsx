@@ -379,15 +379,16 @@ export default function CallControls({ peerId, peerName, conversationId, initial
       const pc = new RTCPeerConnection({
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
           {
-            urls: "turn:openrelay.metered.ca:80",
-            username: "openrelayproject",
-            credential: "openrelayproject",
+            urls: "turn:numb.viagenie.ca",
+            username: "webrtc@live.com",
+            credential: "muazkh",
           },
           {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject",
+            urls: "turn:turn.anyfirewall.com:443?transport=tcp",
+            username: "webrtc",
+            credential: "webrtc",
           },
         ],
       });
@@ -588,15 +589,16 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     const pc = new RTCPeerConnection({
                       iceServers: [
                         { urls: "stun:stun.l.google.com:19302" },
+                        { urls: "stun:stun1.l.google.com:19302" },
                         {
-                          urls: "turn:openrelay.metered.ca:80",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
+                          urls: "turn:numb.viagenie.ca",
+                          username: "webrtc@live.com",
+                          credential: "muazkh",
                         },
                         {
-                          urls: "turn:openrelay.metered.ca:443",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
+                          urls: "turn:turn.anyfirewall.com:443?transport=tcp",
+                          username: "webrtc",
+                          credential: "webrtc",
                         },
                       ],
                     });
