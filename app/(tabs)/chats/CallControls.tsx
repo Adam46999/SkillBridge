@@ -385,24 +385,12 @@ export default function CallControls({ peerId, peerName, conversationId, initial
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
           {
-            urls: "turn:numb.viagenie.ca",
-            username: "webrtc@live.com",
-            credential: "muazkh",
-          },
-          {
-            urls: "turn:openrelay.metered.ca:80",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: "turn:openrelay.metered.ca:443?transport=tcp",
-            username: "openrelayproject",
-            credential: "openrelayproject",
+            urls: [
+              "turn:100.51.157.166:3478",
+              "turn:100.51.157.166:3478?transport=tcp",
+            ],
+            username: "skillbridge",
+            credential: "skillbridge123",
           },
         ],
         iceCandidatePoolSize: 10,
@@ -621,24 +609,12 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                         { urls: "stun:stun.l.google.com:19302" },
                         { urls: "stun:stun1.l.google.com:19302" },
                         {
-                          urls: "turn:numb.viagenie.ca",
-                          username: "webrtc@live.com",
-                          credential: "muazkh",
-                        },
-                        {
-                          urls: "turn:openrelay.metered.ca:80",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
-                        },
-                        {
-                          urls: "turn:openrelay.metered.ca:443",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
-                        },
-                        {
-                          urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
+                          urls: [
+                            "turn:100.51.157.166:3478",
+                            "turn:100.51.157.166:3478?transport=tcp",
+                          ],
+                          username: "skillbridge",
+                          credential: "skillbridge123",
                         },
                       ],
                       iceCandidatePoolSize: 10,
