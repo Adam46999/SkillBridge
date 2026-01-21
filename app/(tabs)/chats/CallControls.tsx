@@ -380,23 +380,23 @@ export default function CallControls({ peerId, peerName, conversationId, initial
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
           {
-            urls: "turn:openrelay.metered.ca:80",
+            urls: [
+              "turn:openrelay.metered.ca:80",
+              "turn:openrelay.metered.ca:443",
+              "turn:openrelay.metered.ca:443?transport=tcp",
+            ],
             username: "openrelayproject",
             credential: "openrelayproject",
           },
           {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject",
-          },
-          {
-            urls: "turn:openrelay.metered.ca:443?transport=tcp",
-            username: "openrelayproject",
-            credential: "openrelayproject",
+            urls: "turn:relay1.expressturn.com:3478",
+            username: "efDVPY8C0K2Y2FLS5K",
+            credential: "aF94HVQYDXOhMtqC",
           },
         ],
-        iceTransportPolicy: "all",
+        iceCandidatePoolSize: 10,
       });
       pcRef.current = pc;
 
@@ -596,23 +596,23 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                       iceServers: [
                         { urls: "stun:stun.l.google.com:19302" },
                         { urls: "stun:stun1.l.google.com:19302" },
+                        { urls: "stun:stun2.l.google.com:19302" },
                         {
-                          urls: "turn:openrelay.metered.ca:80",
+                          urls: [
+                            "turn:openrelay.metered.ca:80",
+                            "turn:openrelay.metered.ca:443",
+                            "turn:openrelay.metered.ca:443?transport=tcp",
+                          ],
                           username: "openrelayproject",
                           credential: "openrelayproject",
                         },
                         {
-                          urls: "turn:openrelay.metered.ca:443",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
-                        },
-                        {
-                          urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                          username: "openrelayproject",
-                          credential: "openrelayproject",
+                          urls: "turn:relay1.expressturn.com:3478",
+                          username: "efDVPY8C0K2Y2FLS5K",
+                          credential: "aF94HVQYDXOhMtqC",
                         },
                       ],
-                      iceTransportPolicy: "all",
+                      iceCandidatePoolSize: 10,
                     });
                     pcRef.current = pc;
 
