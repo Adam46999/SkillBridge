@@ -376,7 +376,21 @@ export default function CallControls({ peerId, peerName, conversationId, initial
 
     try {
       console.log("[webrtc] starting call to", peerId);
-      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+          {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject",
+          },
+        ],
+      });
       pcRef.current = pc;
 
       pc.ontrack = (ev) => {
@@ -571,7 +585,21 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     incomingOfferRef.current = null;
                     setIncomingOffer(null);
 
-                    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+                    const pc = new RTCPeerConnection({
+                      iceServers: [
+                        { urls: "stun:stun.l.google.com:19302" },
+                        {
+                          urls: "turn:openrelay.metered.ca:80",
+                          username: "openrelayproject",
+                          credential: "openrelayproject",
+                        },
+                        {
+                          urls: "turn:openrelay.metered.ca:443",
+                          username: "openrelayproject",
+                          credential: "openrelayproject",
+                        },
+                      ],
+                    });
                     pcRef.current = pc;
 
                     pc.ontrack = (ev) => {
