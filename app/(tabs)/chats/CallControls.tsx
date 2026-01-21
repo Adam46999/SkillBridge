@@ -220,14 +220,22 @@ export default function CallControls({ peerId, peerName, conversationId, initial
         const pc = pcRef.current;
         if (!pc) return;
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        console.log("[webrtc] Remote description set, processing queued candidates:", pendingIceRef.current.length);
 
         if (pendingIceRef.current && pendingIceRef.current.length) {
+          console.log("[webrtc] Adding", pendingIceRef.current.length, "queued ICE candidates");
           for (const c of pendingIceRef.current) {
             try {
               await pc.addIceCandidate(new RTCIceCandidate(c));
-            } catch {}
+              console.log("[webrtc] Successfully added queued candidate");
+            } catch (e) {
+              console.warn("[webrtc] Failed to add queued candidate:", e);
+            }
           }
           pendingIceRef.current = [];
+          console.log("[webrtc] All queued candidates processed");
+        } else {
+          console.log("[webrtc] No queued candidates to process");
         }
       } catch (err) {
         console.error("Failed applying answer", err);
@@ -712,6 +720,7 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     };
 
                     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                    console.log("[webrtc][callee] Remote description set, processing queued candidates:", pendingIceRef.current.length);
 
                     const localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
                     localStreamRef.current = localStream;
@@ -720,12 +729,19 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     for (const track of localStream.getTracks()) pc.addTrack(track, localStream);
 
                     if (pendingIceRef.current && pendingIceRef.current.length) {
+                      console.log("[webrtc][callee] Adding", pendingIceRef.current.length, "queued ICE candidates");
                       for (const c of pendingIceRef.current) {
                         try {
                           await pc.addIceCandidate(new RTCIceCandidate(c));
-                        } catch {}
+                          console.log("[webrtc][callee] Successfully added queued candidate");
+                        } catch (e) {
+                          console.warn("[webrtc][callee] Failed to add queued candidate:", e);
+                        }
                       }
                       pendingIceRef.current = [];
+                      console.log("[webrtc][callee] All queued candidates processed");
+                    } else {
+                      console.log("[webrtc][callee] No queued candidates to process");
                     }
 
                     const answer = await pc.createAnswer();
