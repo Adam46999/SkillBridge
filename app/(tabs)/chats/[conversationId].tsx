@@ -45,7 +45,7 @@ import {
 } from "../../../lib/chat/socket";
 
 import ChatHeader from "./(components)/ChatHeader";
-import { useGlobalCall } from "../../../../lib/GlobalCallContext";
+import { useGlobalCall } from "../../../lib/GlobalCallContext";
 import ChatInput from "./(components)/ChatInput";
 import MessagesList from "./(components)/MessagesList";
 import FileUploader, { FileUploaderHandle } from "./FileUploader";
