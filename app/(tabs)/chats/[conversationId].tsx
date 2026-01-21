@@ -45,7 +45,7 @@ import {
 } from "../../../lib/chat/socket";
 
 import ChatHeader from "./(components)/ChatHeader";
-import CallControls from "./CallControls";
+import { useGlobalCall } from "../GlobalCallOverlay";
 import ChatInput from "./(components)/ChatInput";
 import MessagesList from "./(components)/MessagesList";
 import FileUploader, { FileUploaderHandle } from "./FileUploader";
@@ -69,6 +69,7 @@ function toTime(s: string) {
 
 export default function ConversationScreen() {
   const router = useRouter();
+  const { startCall: startGlobalCall } = useGlobalCall();
   const params = useLocalSearchParams<{
     conversationId?: string;
     peerName?: string;
@@ -157,9 +158,7 @@ export default function ConversationScreen() {
         try {
           const initFrom = String(params.initialRingingFrom || "").trim();
           if (initFrom && peerId && String(initFrom) === String(peerId)) {
-            setCallPeerIdState(initFrom);
-            setInitialRingingFrom(initFrom);
-            setShowCallControls(true);
+            startGlobalCall({ peerId: initFrom, peerName, conversationId: convId, initialRingingFrom: initFrom });
           }
         } catch {}
 
@@ -260,9 +259,7 @@ export default function ConversationScreen() {
           const from = String(p.fromUserId || "").trim();
           if (!from) return;
           if (peerId && from !== String(peerId)) return;
-          setCallPeerIdState(from);
-          setInitialRingingFrom(from);
-          setShowCallControls(true);
+          startGlobalCall({ peerId: from, peerName, conversationId: convId, initialRingingFrom: from });
         });
         cleanupFns.push(offR);
       } catch {}
@@ -273,37 +270,12 @@ export default function ConversationScreen() {
           const from = String(p.fromUserId || "").trim();
           if (!from) return;
           if (peerId && from !== String(peerId)) return;
-          setCallPeerIdState(from);
-          setShowCallControls(true);
+          startGlobalCall({ peerId: from, peerName, conversationId: convId, initialRingingFrom: undefined });
         });
         cleanupFns.push(offStart);
       } catch {}
 
-      // react to call-end to ensure UI closes on both sides
-      try {
-        const offEnd = onCallEnded((p) => {
-          const from = String(p.fromUserId || "").trim();
-          if (!from) return;
-          if (peerId && from !== String(peerId)) return;
-          setShowCallControls(false);
-          setCallPeerIdState(null);
-          setInitialRingingFrom(null);
-        });
-        cleanupFns.push(offEnd);
-      } catch {}
-
-      // handle remote reject (callee declined) to close caller UI
-      try {
-        const offRej = onReject((p) => {
-          const from = String(p.fromUserId || "").trim();
-          if (!from) return;
-          if (peerId && from !== String(peerId)) return;
-          // if caller sees reject from callee, close call UI
-          setShowCallControls(false);
-          setCallPeerIdState(null);
-        });
-        cleanupFns.push(offRej);
-      } catch {}
+      // Call end/reject are now handled by GlobalCallProvider's CallControls onClose
 
       void safeMarkRead(token);
 
@@ -419,15 +391,6 @@ export default function ConversationScreen() {
     });
   }, [peerId, peerName, router]);
 
-  const [showCallControls, setShowCallControls] = useState(false);
-  const [callPeerIdState, setCallPeerIdState] = useState<string | null>(null);
-  const [initialRingingFrom, setInitialRingingFrom] = useState<string | null>(null);
-
-  const startCall = useCallback(() => {
-    setCallPeerIdState(peerId || null);
-    setShowCallControls(true);
-  }, [peerId]);
-
   const handleFileUpload = useCallback(() => {
     fileUploaderRef.current?.triggerUpload?.();
   }, []);
@@ -479,7 +442,7 @@ export default function ConversationScreen() {
         onPressTitle={openPeerProfile}
         onPressAvatar={openPeerProfile}
         onRequestSession={requestSessionFromChat}
-        onStartCall={startCall}
+        onStartCall={() => startGlobalCall({ peerId: peerId || '', peerName, conversationId: convId, initialRingingFrom: undefined })}
       />
 
       <MessagesList
@@ -512,25 +475,7 @@ export default function ConversationScreen() {
         </View>
       )}
 
-      <View style={{ 
-        position: "absolute", 
-        bottom: 80, 
-        left: 12, 
-        right: 12,
-        display: showCallControls ? "flex" : "none"
-      }}>
-        <CallControls
-          peerId={callPeerIdState ?? peerId}
-          peerName={peerName}
-          conversationId={convId}
-          initialRingingFrom={initialRingingFrom ?? undefined}
-          onClose={() => {
-            setShowCallControls(false);
-            setCallPeerIdState(null);
-            setInitialRingingFrom(null);
-          }}
-        />
-      </View>
+      {/* CallControls now rendered globally via GlobalCallProvider in _layout.tsx */}
     </KeyboardAvoidingView>
   );
 }
