@@ -236,12 +236,19 @@ export default function CallControls({ peerId, peerName, conversationId, initial
 
     const offIce = onIceCandidate(async ({ fromUserId, candidate }) => {
       try {
+        console.log("[webrtc] ICE candidate received from signaling:", { fromUserId, candidate: candidate?.candidate?.substring(0, 50) });
         const pc = pcRef.current;
         if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) {
-          if (candidate) pendingIceRef.current.push(candidate);
+          if (candidate) {
+            console.log("[webrtc] No remote description yet, queuing ICE candidate");
+            pendingIceRef.current.push(candidate);
+          }
           return;
         }
-        if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (candidate) {
+          console.log("[webrtc] Adding ICE candidate to peer connection");
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
       } catch (err) {
         console.error("Failed adding remote ICE", err);
       }
