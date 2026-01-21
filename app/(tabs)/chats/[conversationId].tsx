@@ -512,21 +512,25 @@ export default function ConversationScreen() {
         </View>
       )}
 
-      {showCallControls && (
-        <View style={{ position: "absolute", bottom: 80, left: 12, right: 12 }}>
-          <CallControls
-            peerId={callPeerIdState ?? peerId}
-            peerName={peerName}
-            conversationId={convId}
-            initialRingingFrom={initialRingingFrom ?? undefined}
-            onClose={() => {
-              setShowCallControls(false);
-              setCallPeerIdState(null);
-              setInitialRingingFrom(null);
-            }}
-          />
-        </View>
-      )}
+      <View style={{ 
+        position: "absolute", 
+        bottom: 80, 
+        left: 12, 
+        right: 12,
+        display: showCallControls ? "flex" : "none"
+      }}>
+        <CallControls
+          peerId={callPeerIdState ?? peerId}
+          peerName={peerName}
+          conversationId={convId}
+          initialRingingFrom={initialRingingFrom ?? undefined}
+          onClose={() => {
+            setShowCallControls(false);
+            setCallPeerIdState(null);
+            setInitialRingingFrom(null);
+          }}
+        />
+      </View>
     </KeyboardAvoidingView>
   );
 }
