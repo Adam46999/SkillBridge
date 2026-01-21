@@ -654,21 +654,6 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                       console.log("[webrtc][callee] connectionState", pc.connectionState);
                       if (pc.connectionState === "connected") {
                         if (!callStartTime) setCallStartTime(Date.now());
-                        stopAllRinging("connection established");
-                      }
-                      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-                        console.warn("[webrtc][callee] terminal connectionState -> dumping stats and hanging up", pc.connectionState);
-                        try {
-                          dumpPcStats("callee-terminal");
-                        } catch {}
-                        hangUp();
-                      }
-                    };
-
-                    pc.onconnectionstatechange = () => {
-                      console.log("[webrtc][callee] connectionState", pc.connectionState);
-                      if (pc.connectionState === "connected") {
-                        if (!callStartTime) setCallStartTime(Date.now());
                         callConnectedRef.current = true;
                         stopAllRinging("connection established");
                       }
