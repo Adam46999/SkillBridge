@@ -423,8 +423,21 @@ export default function CallControls({ peerId, peerName, conversationId, initial
       };
 
       pc.onicecandidate = (ev) => {
-        console.log("[webrtc][caller] onicecandidate", ev.candidate);
-        if (ev.candidate) sendIceCandidate(peerId, ev.candidate);
+        if (ev.candidate) {
+          const c = ev.candidate;
+          console.log("[webrtc][caller] ICE candidate:", {
+            type: c.type,
+            protocol: c.protocol,
+            address: c.address,
+            port: c.port,
+            relatedAddress: c.relatedAddress,
+            relatedPort: c.relatedPort,
+            candidate: c.candidate
+          });
+          sendIceCandidate(peerId, ev.candidate);
+        } else {
+          console.log("[webrtc][caller] ICE gathering complete");
+        }
       };
 
       pc.onconnectionstatechange = () => {
@@ -652,8 +665,21 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     };
 
                     pc.onicecandidate = (ev) => {
-                      console.log("[webrtc][callee] onicecandidate", ev.candidate);
-                      if (ev.candidate) sendIceCandidate(from, ev.candidate);
+                      if (ev.candidate) {
+                        const c = ev.candidate;
+                        console.log("[webrtc][callee] ICE candidate:", {
+                          type: c.type,
+                          protocol: c.protocol,
+                          address: c.address,
+                          port: c.port,
+                          relatedAddress: c.relatedAddress,
+                          relatedPort: c.relatedPort,
+                          candidate: c.candidate
+                        });
+                        sendIceCandidate(from, ev.candidate);
+                      } else {
+                        console.log("[webrtc][callee] ICE gathering complete");
+                      }
                     };
 
                     pc.onconnectionstatechange = () => {

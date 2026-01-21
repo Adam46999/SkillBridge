@@ -93,6 +93,18 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="_GlobalCallOverlay"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="GlobalCallOverlay"
+          options={{
+            href: null,
+          }}
+        />
       </Tabs>
     </GlobalCallProvider>
   );
