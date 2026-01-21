@@ -1,7 +1,7 @@
 // Global call overlay that persists across navigation
 import React, { createContext, useContext, useState, ReactNode } from "react";
 import { View } from "react-native";
-import CallControls from "./chats/CallControls";
+import CallControls from "../app/(tabs)/chats/CallControls";
 
 type CallState = {
   peerId: string;

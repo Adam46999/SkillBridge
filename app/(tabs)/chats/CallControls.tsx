@@ -381,6 +381,8 @@ export default function CallControls({ peerId, peerName, conversationId, initial
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
           { urls: "stun:stun2.l.google.com:19302" },
+          { urls: "stun:stun3.l.google.com:19302" },
+          { urls: "stun:stun4.l.google.com:19302" },
           {
             urls: [
               "turn:openrelay.metered.ca:80",
@@ -394,6 +396,18 @@ export default function CallControls({ peerId, peerName, conversationId, initial
             urls: "turn:relay1.expressturn.com:3478",
             username: "efDVPY8C0K2Y2FLS5K",
             credential: "aF94HVQYDXOhMtqC",
+          },
+          {
+            urls: [
+              "turn:bn-turn1.xirsys.com:80?transport=udp",
+              "turn:bn-turn1.xirsys.com:3478?transport=udp",
+              "turn:bn-turn1.xirsys.com:80?transport=tcp",
+              "turn:bn-turn1.xirsys.com:3478?transport=tcp",
+              "turns:bn-turn1.xirsys.com:443?transport=tcp",
+              "turns:bn-turn1.xirsys.com:5349?transport=tcp",
+            ],
+            username: "ml0jh0qMKZKd9P_9C0UIBY2xRnZ5dJQ6K5XcdVKbEJf8lJDXSij7UMZRdzAz9j7TAAAAAGW_CMFyYWVk",
+            credential: "f6454e32-f5de-11ef-b0a4-0242ac120004",
           },
         ],
         iceCandidatePoolSize: 10,
@@ -597,6 +611,8 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                         { urls: "stun:stun.l.google.com:19302" },
                         { urls: "stun:stun1.l.google.com:19302" },
                         { urls: "stun:stun2.l.google.com:19302" },
+                        { urls: "stun:stun3.l.google.com:19302" },
+                        { urls: "stun:stun4.l.google.com:19302" },
                         {
                           urls: [
                             "turn:openrelay.metered.ca:80",
@@ -610,6 +626,18 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                           urls: "turn:relay1.expressturn.com:3478",
                           username: "efDVPY8C0K2Y2FLS5K",
                           credential: "aF94HVQYDXOhMtqC",
+                        },
+                        {
+                          urls: [
+                            "turn:bn-turn1.xirsys.com:80?transport=udp",
+                            "turn:bn-turn1.xirsys.com:3478?transport=udp",
+                            "turn:bn-turn1.xirsys.com:80?transport=tcp",
+                            "turn:bn-turn1.xirsys.com:3478?transport=tcp",
+                            "turns:bn-turn1.xirsys.com:443?transport=tcp",
+                            "turns:bn-turn1.xirsys.com:5349?transport=tcp",
+                          ],
+                          username: "ml0jh0qMKZKd9P_9C0UIBY2xRnZ5dJQ6K5XcdVKbEJf8lJDXSij7UMZRdzAz9j7TAAAAAGW_CMFyYWVk",
+                          credential: "f6454e32-f5de-11ef-b0a4-0242ac120004",
                         },
                       ],
                       iceCandidatePoolSize: 10,
