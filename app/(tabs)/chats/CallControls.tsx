@@ -376,9 +376,14 @@ export default function CallControls({ peerId, peerName, conversationId, initial
 
     try {
       console.log("[webrtc] starting call to", peerId);
+      
+      // Test TURN connectivity first
+      console.log("[webrtc] Testing TURN server connectivity...");
+      
       const pc = new RTCPeerConnection({
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun1.l.google.com:19302" },
           {
             urls: "turn:numb.viagenie.ca",
             username: "webrtc@live.com",
@@ -400,7 +405,6 @@ export default function CallControls({ peerId, peerName, conversationId, initial
             credential: "openrelayproject",
           },
         ],
-        iceTransportPolicy: "relay",
         iceCandidatePoolSize: 10,
       });
       pcRef.current = pc;
@@ -610,9 +614,12 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                     incomingOfferRef.current = null;
                     setIncomingOffer(null);
 
+                    console.log("[webrtc] accepting call - creating peer connection");
+                    
                     const pc = new RTCPeerConnection({
                       iceServers: [
                         { urls: "stun:stun.l.google.com:19302" },
+                        { urls: "stun:stun1.l.google.com:19302" },
                         {
                           urls: "turn:numb.viagenie.ca",
                           username: "webrtc@live.com",
@@ -634,7 +641,6 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                           credential: "openrelayproject",
                         },
                       ],
-                      iceTransportPolicy: "relay",
                       iceCandidatePoolSize: 10,
                     });
                     pcRef.current = pc;
