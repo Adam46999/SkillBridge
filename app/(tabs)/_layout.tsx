@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Tabs, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { GlobalCallProvider } from "./GlobalCallOverlay";
+import { GlobalCallProvider } from "./_GlobalCallOverlay";
 
 export default function TabLayout() {
   const router = useRouter();
