@@ -411,7 +411,7 @@ export default function CallControls({ peerId, peerName, conversationId, initial
     if (!peerId) return Alert.alert("No peer selected");
 
     try {
-      console.log("[webrtc] starting call to", peerId);
+      console.log("[webrtc] starting call to", peerId, "- build v2");
       
       // Test TURN connectivity first
       console.log("[webrtc] Testing TURN server connectivity...");
