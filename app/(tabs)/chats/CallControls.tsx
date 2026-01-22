@@ -456,7 +456,9 @@ export default function CallControls({ peerId, peerName, conversationId, initial
             candidate: c.candidate
           });
           // Use toJSON() to ensure proper serialization for Socket.io
-          sendIceCandidate(peerId, ev.candidate.toJSON());
+          const candidateJson = ev.candidate.toJSON();
+          console.log("[webrtc][caller] Sending candidate JSON:", candidateJson);
+          sendIceCandidate(peerId, candidateJson);
         } else {
           console.log("[webrtc][caller] ICE gathering complete");
         }
@@ -682,7 +684,9 @@ export default function CallControls({ peerId, peerName, conversationId, initial
                           candidate: c.candidate
                         });
                         // Use toJSON() to ensure proper serialization for Socket.io
-                        sendIceCandidate(from, ev.candidate.toJSON());
+                        const candidateJson = ev.candidate.toJSON();
+                        console.log("[webrtc][callee] Sending candidate JSON:", candidateJson);
+                        sendIceCandidate(from, candidateJson);
                       } else {
                         console.log("[webrtc][callee] ICE gathering complete");
                       }
