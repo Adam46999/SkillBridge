@@ -1,5 +1,5 @@
 // app/manage-skills-to-teach/ManageSkillsToTeachScreen.tsx
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -43,6 +43,13 @@ type SheetMode = "quickAdd" | "suggestedAdd" | "addAllSuggested" | "editLevel";
 
 export default function ManageSkillsToTeachScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerShown: false });
+    } catch {}
+  }, [navigation]);
 
   const {
     skills,
@@ -355,7 +362,7 @@ export default function ManageSkillsToTeachScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#f4f4f5" }}
+      style={{ flex: 1, backgroundColor: "#000000" }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       {toast.visible && (
@@ -643,116 +650,114 @@ export default function ManageSkillsToTeachScreen() {
 const styles = StyleSheet.create({
   centered: {
     flex: 1,
-    backgroundColor: "#f4f4f5",
+    backgroundColor: "#000000",
     alignItems: "center",
     justifyContent: "center",
   },
-  loadingText: { marginTop: 8, fontSize: 14, color: "#4b5563" },
-  container: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 32 },
+  loadingText: { marginTop: 8, fontSize: 14, color: "#94A3B8" },
+  container: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 32, backgroundColor: "#000000" },
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  backText: { fontSize: 14, color: "#3b82f6" },
-  title: { fontSize: 24, fontWeight: "800", color: "#111827", marginTop: 8 },
-  subtitle: { fontSize: 14, color: "#6b7280", marginTop: 4 },
+  backText: { fontSize: 14, color: "#60A5FA" },
+  title: { fontSize: 24, fontWeight: "800", color: "#60A5FA", marginTop: 8 },
+  subtitle: { fontSize: 14, color: "#CBD5E1", marginTop: 4 },
 
   pendingSyncBar: {
     marginTop: 10,
-    backgroundColor: "#fff7ed",
+    backgroundColor: "#134E4A",
     borderWidth: 1,
-    borderColor: "#fed7aa",
+    borderColor: "#10B981",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 14,
   },
-  pendingSyncText: { fontSize: 12, color: "#9a3412", fontWeight: "800" },
+  pendingSyncText: { fontSize: 12, color: "#86EFAC", fontWeight: "800" },
 
   globalSearchWrap: {
     marginTop: 12,
     marginBottom: 8,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
-  globalSearchLabel: { fontSize: 12, fontWeight: "700", color: "#4b5563" },
+  globalSearchLabel: { fontSize: 12, fontWeight: "700", color: "#94A3B8" },
   globalSearchInput: {
     marginTop: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
     paddingHorizontal: 10,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#f9fafb",
+    color: "#E5E7EB",
+    backgroundColor: "#0B1120",
   },
-  globalSearchHint: { marginTop: 6, fontSize: 11, color: "#6b7280" },
+  globalSearchHint: { marginTop: 6, fontSize: 11, color: "#94A3B8" },
 
   errorBox: {
-    backgroundColor: "#fee2e2",
+    backgroundColor: "#450A0A",
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
   },
   errorTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#b91c1c",
+    color: "#FCA5A5",
     marginBottom: 2,
   },
-  errorText: { fontSize: 13, color: "#b91c1c" },
-  errorHint: { fontSize: 11, color: "#7f1d1d", marginTop: 4 },
+  errorText: { fontSize: 13, color: "#FCA5A5" },
+  errorHint: { fontSize: 11, color: "#F87171", marginTop: 4 },
 
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
   sectionTitle: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#111827",
+    color: "#93C5FD",
     marginBottom: 4,
   },
-  sectionDescription: { fontSize: 13, color: "#6b7280", marginBottom: 8 },
+  sectionDescription: { fontSize: 13, color: "#CBD5E1", marginBottom: 8 },
 
   breadcrumbBar: {
     borderRadius: 10,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#0B1120",
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
-  breadcrumbLabel: { fontSize: 11, color: "#6b7280", marginBottom: 2 },
-  breadcrumbText: { fontSize: 12, color: "#111827" },
+  breadcrumbLabel: { fontSize: 11, color: "#CBD5E1", marginBottom: 2 },
+  breadcrumbText: { fontSize: 12, color: "#F1F5F9" },
 
   mainSectionTitle: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#111827",
+    color: "#93C5FD",
     marginTop: 12,
     marginBottom: 6,
   },
 
   statsCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#1E293B",
     marginBottom: 8,
   },
-  statsText: { fontSize: 13, color: "#111827", fontWeight: "900" },
-  statsHint: { marginTop: 4, fontSize: 11, color: "#6b7280" },
+  statsText: { fontSize: 13, color: "#F1F5F9", fontWeight: "900" },
+  statsHint: { marginTop: 4, fontSize: 11, color: "#CBD5E1" },
 
   undoBar: {
     marginTop: 10,
@@ -760,13 +765,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#1E293B",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#334155",
   },
-  undoText: { fontSize: 13, color: "#374151" },
-  undoButtonText: { fontSize: 13, fontWeight: "900", color: "#2563eb" },
+  undoText: { fontSize: 13, color: "#E5E7EB" },
+  undoButtonText: { fontSize: 13, fontWeight: "900", color: "#60A5FA" },
 
   toast: {
     position: "absolute",
@@ -811,49 +818,51 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#0B1120",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
   sheetHandle: {
     alignSelf: "center",
     width: 46,
     height: 5,
     borderRadius: 999,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#334155",
     marginBottom: 10,
   },
-  sheetTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
+  sheetTitle: { fontSize: 16, fontWeight: "900", color: "#93C5FD" },
 
   duplicateCard: {
     marginTop: 10,
     borderRadius: 14,
     padding: 12,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#020617",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#1E293B",
   },
-  duplicateTitle: { fontSize: 13, fontWeight: "900", color: "#111827" },
-  duplicateText: { marginTop: 4, fontSize: 12, color: "#374151" },
-  duplicateHint: { marginTop: 4, fontSize: 11, color: "#6b7280" },
+  duplicateTitle: { fontSize: 13, fontWeight: "900", color: "#93C5FD" },
+  duplicateText: { marginTop: 4, fontSize: 12, color: "#F1F5F9" },
+  duplicateHint: { marginTop: 4, fontSize: 11, color: "#CBD5E1" },
 
   sheetLabel: {
     marginTop: 6,
     fontSize: 12,
     fontWeight: "800",
-    color: "#4b5563",
+    color: "#94A3B8",
   },
   sheetInput: {
     marginTop: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
     paddingHorizontal: 10,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#111827",
-    backgroundColor: "#f9fafb",
+    color: "#E5E7EB",
+    backgroundColor: "#020617",
   },
 
   levelRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
@@ -862,11 +871,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#f9fafb",
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
   },
   levelPillActive: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
-  levelPillText: { fontSize: 12, color: "#374151", fontWeight: "900" },
+  levelPillText: { fontSize: 12, color: "#E5E7EB", fontWeight: "900" },
   levelPillTextActive: { color: "#ffffff" },
 
   sheetButtonsRow: { flexDirection: "row", gap: 10, marginTop: 14 },
@@ -879,12 +888,12 @@ const styles = StyleSheet.create({
   },
   sheetBtnSecondary: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#f9fafb",
+    borderColor: "#334155",
+    backgroundColor: "#020617",
   },
-  sheetBtnSecondaryText: { color: "#374151", fontWeight: "900", fontSize: 13 },
+  sheetBtnSecondaryText: { color: "#E5E7EB", fontWeight: "900", fontSize: 13 },
   sheetBtnPrimary: { backgroundColor: "#2563eb" },
   sheetBtnPrimaryText: { color: "#ffffff", fontWeight: "900", fontSize: 13 },
 
-  sheetHint: { marginTop: 10, fontSize: 11, color: "#6b7280" },
+  sheetHint: { marginTop: 10, fontSize: 11, color: "#94A3B8" },
 });

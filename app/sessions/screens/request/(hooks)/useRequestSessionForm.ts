@@ -140,10 +140,42 @@ const back = useCallback(() => {
     // string presets (safe defaults)
     const p = normalizeStr(preset);
     const today = todayYYYYMMDD();
+    
     if (p === "today") {
       setDate(today);
       return;
     }
+    
+    if (p === "tomorrow") {
+      const dt = new Date();
+      dt.setDate(dt.getDate() + 1);
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      setDate(`${yyyy}-${mm}-${dd}`);
+      return;
+    }
+    
+    if (p === "plus30") {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + 30);
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      setDate(today);
+      setTime(`${hh}:${mm}`);
+      return;
+    }
+    
+    if (p === "plus60") {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + 60);
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      setDate(today);
+      setTime(`${hh}:${mm}`);
+      return;
+    }
+    
     if (p === "today_18") {
       setDate(today);
       setTime("18:00");

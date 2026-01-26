@@ -4,6 +4,12 @@ export function validateEmail(email: string) {
   return { ok, value: v, error: ok ? null : "Please enter a valid email." };
 }
 
+export function validateUsername(username: string) {
+  const v = username.trim().toLowerCase();
+  const ok = v.length >= 3 && /^[a-z0-9_]+$/.test(v);
+  return { ok, value: v, error: ok ? null : "Username must be at least 3 characters and contain only letters, numbers, and underscores." };
+}
+
 export function validatePassword(password: string) {
   const v = password;
   const ok = v.length >= 6;

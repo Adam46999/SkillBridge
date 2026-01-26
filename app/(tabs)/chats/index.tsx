@@ -69,7 +69,7 @@ export default function ChatsInboxScreen() {
 
         const token = await AsyncStorage.getItem("token");
         if (!token) {
-          router.replace("/(auth)/login" as any);
+          router.replace("/(auth)/login");
           return;
         }
 
@@ -214,7 +214,7 @@ export default function ChatsInboxScreen() {
           peerName: item.peer?.fullName || "Chat",
           peerId: item.peer?.id || "",
         },
-      } as any);
+      });
 
       setTimeout(() => setPendingOpenId(null), 650);
     },
@@ -382,6 +382,12 @@ export default function ChatsInboxScreen() {
     </View>
   );
 }
+
+export const options = {
+  title: "Chats",
+  headerTitle: "Chats",
+  headerShown: true,
+};
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },

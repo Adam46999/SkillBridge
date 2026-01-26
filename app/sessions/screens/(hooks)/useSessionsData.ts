@@ -182,10 +182,10 @@ const ensureMe = useCallback(async () => {
       try {
         const t = await ensureToken();
         if (!t) {
-          // user not logged in -> go to login
-          if (mountedRef.current) router.replace("/auth/login" as any);
-          return;
-        }
+            // user not logged in -> go to login
+            if (mountedRef.current) router.replace("/(auth)/login");
+            return;
+          }
 
         const meId = await ensureMe();
 

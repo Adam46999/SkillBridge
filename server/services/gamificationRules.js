@@ -11,9 +11,9 @@ module.exports = {
 
   // Rating threshold for bonus
   RATING: {
-    HIGH_SCORE_THRESHOLD: 4, // >=4 => bonus
-    MIN: 1,
-    MAX: 5,
+    HIGH_SCORE_THRESHOLD: 40, // >=40 points => bonus
+    MIN: 10, // minimum points to award
+    MAX: 50, // maximum points to award
   },
 
   // Define "late cancellation"

@@ -8,6 +8,10 @@ export type ChatMessage = {
   senderId: string;
   text: string;
   createdAt: string; // ISO
+  // Optional file attachment fields
+  fileUrl?: string;
+  fileName?: string;
+  fileMimeType?: string;
 };
 
 export type PeerPublic = {

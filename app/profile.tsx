@@ -27,7 +27,13 @@ type User = {
   availabilitySlots?: AvailabilitySlot[];
 };
 
-const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+// dayNames not needed here
+
+export const options = {
+  title: "Profile",
+  headerTitle: "Profile",
+  headerShown: true,
+};
 
 function timeToMinutes(t: string) {
   const [h, m] = String(t || "0:0")
@@ -63,7 +69,7 @@ export default function ProfileScreen() {
   const mountedRef = useRef(true);
 
   const goLogin = useCallback(() => {
-    router.replace("/(auth)/login" as any);
+    router.replace("/(auth)/login");
   }, [router]);
 
   const loadUser = useCallback(async () => {
@@ -112,12 +118,9 @@ export default function ProfileScreen() {
     goLogin();
   };
 
-  const slots = user?.availabilitySlots ?? [];
+  const slots = useMemo(() => user?.availabilitySlots ?? [], [user?.availabilitySlots]);
   const totalMin = useMemo(() => calcTotalMinutes(slots), [slots]);
-  const daysSet = useMemo(
-    () => new Set(slots.map((s) => s.dayOfWeek)).size,
-    [slots]
-  );
+  const daysSet = useMemo(() => new Set(slots.map((s) => s.dayOfWeek)).size, [slots]);
 
   if (loading && !user && !errorText) {
     return (
@@ -142,6 +145,14 @@ export default function ProfileScreen() {
           />
         }
       >
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.push("/(tabs)")}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.backButtonText}>← Back to Home</Text>
+        </TouchableOpacity>
+
         <View style={styles.headerCard}>
           <Text style={styles.title}>Profile</Text>
           <Text style={styles.name}>{user?.fullName || "SkillSwap user"}</Text>
@@ -187,7 +198,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/manage-skills-to-learn" as any)}
+            onPress={() => router.push("/manage-skills-to-learn")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Skills to learn</Text>
@@ -203,7 +214,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/manage-skills-to-teach" as any)}
+            onPress={() => router.push("/manage-skills-to-teach")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Skills to teach</Text>
@@ -219,7 +230,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/weekly-availability" as any)}
+            onPress={() => router.push("/weekly-availability")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Weekly availability</Text>
@@ -235,7 +246,21 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.rowBtn}
             activeOpacity={0.85}
-            onPress={() => router.push("/find-mentor" as any)}
+            onPress={() => router.push("/manage-preferences")}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>Preferences</Text>
+              <Text style={styles.rowSub}>
+                Languages & communication modes
+              </Text>
+            </View>
+            <Text style={styles.rowArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.rowBtn}
+            activeOpacity={0.85}
+            onPress={() => router.push("/find-mentor")}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>Find mentor</Text>
@@ -263,6 +288,18 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 32 },
+
+  backButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  backButtonText: {
+    color: "#60A5FA",
+    fontSize: 14,
+    fontWeight: "600",
+  },
 
   loadingScreen: {
     flex: 1,

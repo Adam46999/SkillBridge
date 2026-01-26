@@ -9,7 +9,7 @@ const {
   deductPoints,
 } = require("../services/pointsService");
 const { POINTS, CANCEL, REASONS } = require("../services/gamificationRules");
-const { rateSession } = require("../services/ratingsService");
+const { createSessionRating } = require("../services/ratingsService");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
@@ -59,6 +59,8 @@ const RULES = {
   JOIN_LATE_MIN: 180,
   COMPLETE_MAX_DELAY_MIN: 24 * 60,
   ACCEPT_REJECT_BLOCK_AT_START: true,
+  PARTIAL_JOIN_TIMEOUT_MIN: 30, // Cancel if only one user joins within 30 min
+  NO_JOIN_TIMEOUT_MIN: 60, // Cancel if no one joins within 1 hour
 };
 
 function canJoinNow(sessionDoc) {
@@ -81,6 +83,49 @@ function canCompleteNow(sessionDoc) {
   if (since > RULES.COMPLETE_MAX_DELAY_MIN)
     return { ok: false, reason: "Completion window expired" };
   return { ok: true };
+}
+
+function checkAndAutoCancelSession(sessionDoc) {
+  if (sessionDoc.status !== "accepted") return null;
+  
+  const joinedBy = Array.isArray(sessionDoc.joinedBy) ? sessionDoc.joinedBy.map(String) : [];
+  const mentorId = String(sessionDoc.mentorId._id || sessionDoc.mentorId);
+  const learnerId = String(sessionDoc.learnerId._id || sessionDoc.learnerId);
+  const mentorJoined = joinedBy.includes(mentorId);
+  const learnerJoined = joinedBy.includes(learnerId);
+  const noneJoined = !mentorJoined && !learnerJoined;
+  const onlyOneJoined = (mentorJoined && !learnerJoined) || (!mentorJoined && learnerJoined);
+  
+  const sinceScheduled = minutesSince(sessionDoc.scheduledAt);
+  if (sinceScheduled === null) return null;
+  
+  // Case 1: No one joined after 1 hour
+  if (noneJoined && sinceScheduled >= RULES.NO_JOIN_TIMEOUT_MIN) {
+    return {
+      status: "cancelled",
+      reason: "missed_no_one_joined",
+      message: "Session cancelled - no one joined within 1 hour"
+    };
+  }
+  
+  // Case 2: Only one joined, check if 30 min passed since first join
+  if (onlyOneJoined && sessionDoc.joinedAt) {
+    const sinceFirstJoin = minutesSince(sessionDoc.joinedAt);
+    if (sinceFirstJoin !== null && sinceFirstJoin >= RULES.PARTIAL_JOIN_TIMEOUT_MIN) {
+      // Get the name of the user who didn't show up with their role
+      const noShowUser = mentorJoined ? "learner" : "mentor";
+      const noShowPerson = mentorJoined ? sessionDoc.learnerId : sessionDoc.mentorId;
+      const noShowName = noShowPerson?.fullName || noShowUser;
+      
+      return {
+        status: "cancelled",
+        reason: `no_show_${noShowUser}`,
+        message: `Session cancelled - ${noShowName} (${noShowUser}) didn't join within 30 minutes`
+      };
+    }
+  }
+  
+  return null;
 }
 
 function pickUser(u) {
@@ -406,6 +451,22 @@ module.exports = function sessionsRouter(authMiddleware) {
           "fullName email points xp streak avgRating ratingCount"
         );
 
+      // ✅ Check and auto-cancel sessions before returning
+      const cancelPromises = [];
+      for (const session of list) {
+        const cancelCheck = checkAndAutoCancelSession(session);
+        if (cancelCheck) {
+          session.status = cancelCheck.status;
+          session.cancelledAt = new Date();
+          session.cancelReason = cancelCheck.reason;
+          session.cancelMessage = cancelCheck.message;
+          cancelPromises.push(session.save());
+        }
+      }
+      if (cancelPromises.length > 0) {
+        await Promise.all(cancelPromises);
+      }
+
       return res.json({ sessions: list.map(toDTO) });
     } catch (err) {
       console.error("LIST SESSIONS ERROR:", err);
@@ -421,15 +482,26 @@ module.exports = function sessionsRouter(authMiddleware) {
       if (!isValidObjectId(id))
         return res.status(400).json({ error: "Invalid session id" });
 
-      const s = await populateSession(id);
+      let s = await Session.findById(id);
       if (!s) return res.status(404).json({ error: "Session not found" });
 
-      const mentorId = String(s.mentorId?._id || s.mentorId);
-      const learnerId = String(s.learnerId?._id || s.learnerId);
+      const mentorId = String(s.mentorId);
+      const learnerId = String(s.learnerId);
       if (mentorId !== userId && learnerId !== userId)
         return res.status(403).json({ error: "Not allowed" });
 
-      return res.json({ session: toDTO(s) });
+      // ✅ Check for auto-cancel conditions
+      const cancelCheck = checkAndAutoCancelSession(s);
+      if (cancelCheck) {
+        s.status = cancelCheck.status;
+        s.cancelledAt = new Date();
+        s.cancelReason = cancelCheck.reason;
+        s.cancelMessage = cancelCheck.message;
+        await s.save();
+      }
+
+      const populated = await populateSession(s._id);
+      return res.json({ session: toDTO(populated) });
     } catch (err) {
       console.error("GET SESSION ERROR:", err);
       return res.status(500).json({ error: "Failed to get session" });
@@ -474,6 +546,19 @@ module.exports = function sessionsRouter(authMiddleware) {
           .status(400)
           .json({ error: "Only accepted sessions can be joined" });
 
+      // ✅ Check if session should be auto-cancelled BEFORE allowing join
+      const cancelCheck = checkAndAutoCancelSession(s);
+      if (cancelCheck) {
+        s.status = cancelCheck.status;
+        s.cancelledAt = new Date();
+        s.cancelReason = cancelCheck.reason;
+        s.cancelMessage = cancelCheck.message;
+        await s.save();
+        return res.status(400).json({ 
+          error: cancelCheck.message || "Session was cancelled due to timeout"
+        });
+      }
+
       const chk = canJoinNow(s);
       if (!chk.ok) return res.status(400).json({ error: chk.reason });
 
@@ -481,6 +566,16 @@ module.exports = function sessionsRouter(authMiddleware) {
       if (!joinedBy.includes(userId))
         s.joinedBy = [...(s.joinedBy || []), userId];
       if (!s.joinedAt) s.joinedAt = new Date();
+      
+      // ✅ Auto-complete when both users have joined
+      const updatedJoinedBy = Array.isArray(s.joinedBy) ? s.joinedBy.map(String) : [];
+      const bothJoined = updatedJoinedBy.includes(mentorId) && updatedJoinedBy.includes(learnerId);
+      
+      if (bothJoined && s.status === "accepted") {
+        s.status = "completed";
+        s.completedAt = new Date();
+      }
+      
       await s.save();
 
       const populated = await populateSession(s._id);
@@ -630,11 +725,11 @@ module.exports = function sessionsRouter(authMiddleware) {
       const rating = Number(req.body?.rating);
       const feedback = String(req.body?.feedback || "");
 
-      const result = await rateSession({
+      const result = await createSessionRating({
         sessionId: id,
-        userId,
-        rating,
-        feedback,
+        fromUserId: userId,
+        score: rating,
+        comment: feedback,
       });
       return res.json({ ok: true, rating: result?.rating || null });
     } catch (err) {

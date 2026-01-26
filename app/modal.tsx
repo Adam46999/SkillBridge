@@ -27,3 +27,8 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
 });
+
+export const options = {
+  title: "Modal",
+  headerTitle: "Modal",
+};

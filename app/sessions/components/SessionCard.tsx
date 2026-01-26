@@ -19,6 +19,7 @@ import {
   rateSession,
   updateSessionStatus,
 } from "../api/sessionsApi";
+import { getOrCreateConversation } from "../../../lib/chat/api";
 
 import { formatSessionDateTime, statusBadge } from "../utils/formatSession";
 
@@ -171,7 +172,7 @@ export default function SessionCard({
   const [busy, setBusy] = useState(false);
 
   const [rateOpen, setRateOpen] = useState(false);
-  const [rateValue, setRateValue] = useState("5");
+  const [rateValue, setRateValue] = useState("30");
   const [rateFeedback, setRateFeedback] = useState("");
 
   // ✅ FIX (no behavior change): stable id fallback
@@ -226,7 +227,6 @@ export default function SessionCard({
     : [];
 
   const mentorJoined = !!mentorId && joinedBy.includes(mentorId);
-  const learnerJoined = !!learnerId && joinedBy.includes(learnerId);
 
   // ✅ Rules (UI mirrors backend)
   const canAcceptReject = isMentor && uiStatus === "requested" && !timeReached;
@@ -238,19 +238,9 @@ export default function SessionCard({
   const canJoin =
     (isMentor || isLearner) && uiStatus === "accepted" && joinCheck.ok;
 
-  const canComplete =
-    isMentor && uiStatus === "accepted" && completeCheck.ok && mentorJoined;
+  const canComplete = isMentor && uiStatus === "accepted" && completeCheck.ok && mentorJoined;
 
-  const canRate =
-    (isMentor || isLearner) &&
-    uiStatus === "completed" &&
-    !(session as any).rating;
-
-  const canHide =
-    (isMentor || isLearner) &&
-    (uiStatus === "rejected" ||
-      uiStatus === "cancelled" ||
-      uiStatus === "completed");
+  const canRate = isLearner && uiStatus === "completed" && !(session as any).rating;
 
   const setStatus = async (next: SessionStatus) => {
     if (!token) {
@@ -323,8 +313,19 @@ export default function SessionCard({
         console.log("JoinSession skipped:", e?.message);
       }
 
-      // 2) افتح غرفة السيشن
-      router.push(`/sessions/room/${sessionId}`);
+      // 2) Open or create the conversation with the peer and navigate to Chat
+      const peerId = isMentor ? learnerId : mentorId;
+      try {
+        const tokenLocal = token as string;
+        const convId = await getOrCreateConversation(tokenLocal, peerId);
+        router.push({
+          pathname: "/(tabs)/chats/[conversationId]",
+          params: { conversationId: convId, peerId, peerName: otherName },
+        } as any);
+      } catch (e: any) {
+        console.log("Failed to open conversation, falling back to session room:", e?.message);
+        router.push(`/sessions/room/${sessionId}`);
+      }
 
       // 3) sync
       await onChanged();
@@ -388,8 +389,8 @@ export default function SessionCard({
     if (!sessionId) return Alert.alert("Missing id", "This session has no id.");
 
     const n = Number(rateValue);
-    if (!Number.isFinite(n) || n < 1 || n > 5) {
-      Alert.alert("Invalid rating", "Please choose 1 to 5.");
+    if (!Number.isFinite(n) || n < 10 || n > 50) {
+      Alert.alert("Invalid points", "Please enter points between 10 and 50.");
       return;
     }
 
@@ -426,26 +427,35 @@ export default function SessionCard({
       (session as any)?.learner?.email ||
       "User";
 
+  const sessionDeleteNotice = (session as any)?.deleteNotice;
+  const sessionCancelReason = (session as any)?.cancelReason;
+  const sessionCancelMessage = (session as any)?.cancelMessage;
+
   const cancelNotice = useMemo(() => {
     const st = String(uiStatus || "").toLowerCase();
     if (st !== "cancelled" && st !== "rejected") return "";
 
-    const dn = String((session as any)?.deleteNotice || "").trim();
+    const dn = String(sessionDeleteNotice || "").trim();
     if (dn) return dn;
 
-    const cr = String((session as any)?.cancelReason || "").trim();
+    const cr = String(sessionCancelReason || "").trim();
+    const cm = String(sessionCancelMessage || "").trim();
+    
+    // Use the custom message if available
+    if (cm) return cm;
+    
+    // Fallback to reason-based messages
     if (cr === "expired_request") return "This request expired automatically.";
     if (cr === "missed") return "Session time passed and was cancelled.";
+    if (cr === "missed_no_one_joined") return "Session cancelled - no one joined within 1 hour.";
+    if (cr === "no_show_learner") return "Session cancelled - learner didn't join within 30 minutes.";
+    if (cr === "no_show_mentor") return "Session cancelled - mentor didn't join within 30 minutes.";
     if (cr === "late_cancel") return "Cancelled late.";
     if (cr) return "Cancelled.";
 
     if (st === "rejected") return "This request was rejected.";
     return "Cancelled.";
-  }, [
-    session.status,
-    (session as any)?.deleteNotice,
-    (session as any)?.cancelReason,
-  ]);
+  }, [uiStatus, sessionDeleteNotice, sessionCancelReason, sessionCancelMessage]);
 
   return (
     <View
@@ -474,6 +484,19 @@ export default function SessionCard({
               </Text>
             )}
           </Text>
+          
+          {uiStatus === "completed" && (session as any).rating && (
+            <View style={{ marginTop: 8, gap: 4 }}>
+              <Text style={{ color: "#10B981", fontWeight: "700", fontSize: 14 }}>
+                ⭐ Rating: {(session as any).rating} points
+              </Text>
+              {(session as any).feedback && (
+                <Text style={{ color: "#94A3B8", fontSize: 13, fontStyle: "italic" }}>
+                  "{(session as any).feedback}"
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         <Badge text={badgeText} />
@@ -556,19 +579,20 @@ export default function SessionCard({
           />
         )}
 
-        <ActionBtn
-          label="Delete"
-          kind="neutral"
-          onPress={doSmartDelete}
-          disabled={busy}
-        />
+        {uiStatus !== "completed" && (
+          <ActionBtn
+            label="Delete"
+            kind="neutral"
+            onPress={doSmartDelete}
+            disabled={busy}
+          />
+        )}
 
         {busy && <ActivityIndicator />}
       </View>
 
       <Modal visible={rateOpen} transparent animationType="fade">
-        <Pressable
-          onPress={() => setRateOpen(false)}
+        <View
           style={{
             flex: 1,
             backgroundColor: "rgba(0,0,0,0.45)",
@@ -577,7 +601,7 @@ export default function SessionCard({
           }}
         >
           <Pressable
-            onPress={() => {}}
+            onPress={(e) => e.stopPropagation()}
             style={{
               backgroundColor: "#0B1220",
               borderRadius: 16,
@@ -588,18 +612,18 @@ export default function SessionCard({
             }}
           >
             <Text style={{ color: "#E2E8F0", fontWeight: "800", fontSize: 16 }}>
-              Rate session
+              Rate session with points
             </Text>
 
             <Text style={{ color: "#94A3B8" }}>
-              Choose 1–5 and optional feedback.
+              Award 10-50 points to the {isMentor ? "learner" : "mentor"} and add optional feedback.
             </Text>
 
             <TextInput
               value={rateValue}
               onChangeText={setRateValue}
               keyboardType="numeric"
-              placeholder="5"
+              placeholder="30"
               placeholderTextColor="#64748B"
               style={{
                 borderWidth: 1,
@@ -627,21 +651,39 @@ export default function SessionCard({
             />
 
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <ActionBtn
-                label="Cancel"
-                kind="neutral"
+              <Pressable
                 onPress={() => setRateOpen(false)}
                 disabled={busy}
-              />
-              <ActionBtn
-                label="Submit"
-                kind="primary"
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  backgroundColor: busy ? "#1F2937" : "#334155",
+                  opacity: busy ? 0.6 : 1,
+                  flex: 1,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>Cancel</Text>
+              </Pressable>
+              <Pressable
                 onPress={submitRate}
                 disabled={busy}
-              />
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  backgroundColor: busy ? "#1F2937" : "#10B981",
+                  opacity: busy ? 0.6 : 1,
+                  flex: 1,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#E2E8F0", fontWeight: "700" }}>Submit</Text>
+              </Pressable>
             </View>
           </Pressable>
-        </Pressable>
+        </View>
       </Modal>
 
       <Text style={{ color: "#475569" }}>

@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Tabs, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
+import { GlobalCallProvider } from "../../lib/GlobalCallContext";
 
 export default function TabLayout() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function TabLayout() {
         if (!mounted) return;
 
         if (!token) {
-          router.replace("/(auth)/login" as any);
+          router.replace("/(auth)/login");
           return;
         }
       } finally {
@@ -47,44 +48,64 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#020617",
-          borderTopColor: "#0B1120",
-        },
-        tabBarActiveTintColor: "#F97316",
-        tabBarInactiveTintColor: "#94A3B8",
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>🏠</Text>
-          ),
+    <GlobalCallProvider>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarStyle: {
+            backgroundColor: "#020617",
+            borderTopColor: "#0B1120",
+          },
+          tabBarActiveTintColor: "#F97316",
+          tabBarInactiveTintColor: "#94A3B8",
         }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: "Explore",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>🧭</Text>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chats"
-        options={{
-          title: "Chats",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>💬</Text>
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color }) => (
+              <Text style={{ color, fontSize: 16 }}>🏠</Text>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="explore"
+          options={{
+            title: "Profile",
+            tabBarIcon: ({ color }) => (
+              <Text style={{ color, fontSize: 16 }}>👤</Text>
+            ),
+          }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.push("/profile");
+            },
+          }}
+        />
+        <Tabs.Screen
+          name="chats"
+          options={{
+            title: "Chats",
+            tabBarIcon: ({ color }) => (
+              <Text style={{ color, fontSize: 16 }}>💬</Text>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="_GlobalCallOverlay"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="GlobalCallOverlay"
+          options={{
+            href: null,
+          }}
+        />
+      </Tabs>
+    </GlobalCallProvider>
   );
 }

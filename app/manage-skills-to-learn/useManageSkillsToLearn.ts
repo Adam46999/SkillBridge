@@ -1,6 +1,6 @@
 // app/manage-skills-to-learn/useManageSkillsToLearn.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { getMe, updateProfile } from "../../lib/api";
 import {
   ALL_KNOWN_SKILLS,
@@ -57,16 +57,14 @@ export function useManageSkillsToLearn() {
     string | null
   >(null);
 
-  async function getTokenOrFail(): Promise<string | null> {
+  const getTokenOrFail = useCallback(async (): Promise<string | null> => {
     const token = await AsyncStorage.getItem("token");
     if (!token) {
       setError("You are not logged in. Please log in again.");
       return null;
     }
     return token;
-  }
-
-  // ---------- helpers ----------
+  }, []);
   function findExistingSkill(name: string): SkillToLearn | null {
     const trimmed = normalizeName(name);
     if (!trimmed) return null;
@@ -93,7 +91,7 @@ export function useManageSkillsToLearn() {
     }
   }
 
-  async function loadPendingSkills(): Promise<SkillToLearn[] | null> {
+  const loadPendingSkills = useCallback(async (): Promise<SkillToLearn[] | null> => {
     try {
       const raw = await AsyncStorage.getItem(PENDING_SKILLS_KEY);
       if (!raw) return null;
@@ -118,10 +116,10 @@ export function useManageSkillsToLearn() {
       console.log("loadPendingSkills error:", e);
       return null;
     }
-  }
+  }, []);
 
   // (22) try to sync pending changes to backend
-  async function trySyncPending() {
+  const trySyncPending = useCallback(async () => {
     try {
       const token = await getTokenOrFail();
       if (!token) return;
@@ -143,7 +141,7 @@ export function useManageSkillsToLearn() {
       console.log("trySyncPending error:", e);
       setHasPendingSync(true);
     }
-  }
+  }, [getTokenOrFail, loadPendingSkills]);
 
   // ---- load from backend + favorites local ----
   useEffect(() => {
@@ -155,6 +153,7 @@ export function useManageSkillsToLearn() {
 
       try {
         const token = await getTokenOrFail();
+      // intentionally run once on mount; trySyncPending is safe to call here
         if (!token) return;
 
         // (22) attempt sync pending first
@@ -227,7 +226,7 @@ export function useManageSkillsToLearn() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [trySyncPending, getTokenOrFail]);
 
   // ---- persist skills to backend ----
   async function persistSkills(next: SkillToLearn[]) {
@@ -448,8 +447,10 @@ export function useManageSkillsToLearn() {
     [selectedCategoryId]
   );
 
-  const subCategories: SkillSubCategory[] =
-    selectedCategory?.subCategories ?? [];
+  const subCategories: SkillSubCategory[] = useMemo(
+    () => selectedCategory?.subCategories ?? [],
+    [selectedCategory]
+  );
 
   const selectedSubCategory: SkillSubCategory | undefined = useMemo(
     () => subCategories.find((s) => s.id === selectedSubCategoryId),

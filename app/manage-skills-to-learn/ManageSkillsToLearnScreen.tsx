@@ -1,6 +1,6 @@
 // app/manage-skills-to-learn/ManageSkillsToLearnScreen.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -53,6 +53,14 @@ type SheetMode = "quickAdd" | "suggestedAdd" | "addAllSuggested" | "editLevel";
 
 export default function ManageSkillsToLearnScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  // Ensure header shows a friendly title (overrides file-name title)
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerTitle: "Skills you want to learn" });
+    } catch {}
+  }, [navigation]);
 
   const {
     skills,
@@ -432,7 +440,7 @@ export default function ManageSkillsToLearnScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#f4f4f5" }}
+      style={{ flex: 1, backgroundColor: "#000000" }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       {/* Toast */}
@@ -683,6 +691,7 @@ export default function ManageSkillsToLearnScreen() {
                 onClearAll={handleClearAllWithConfirm}
                 filterMode={filterMode}
                 onChangeFilter={setFilterMode}
+                onEditLevel={openEditLevelSheet}
               />
             )}
           </>
@@ -833,10 +842,10 @@ const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 32 },
 
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
-  backText: { fontSize: 14, color: "#3b82f6" },
+  backText: { fontSize: 14, color: "#60A5FA" },
 
-  title: { fontSize: 24, fontWeight: "700", color: "#111827", marginTop: 8 },
-  subtitle: { fontSize: 14, color: "#6b7280", marginTop: 4 },
+  title: { fontSize: 24, fontWeight: "700", color: "#60A5FA", marginTop: 8 },
+  subtitle: { fontSize: 14, color: "#CBD5E1", marginTop: 4 },
 
   pendingSyncBar: {
     marginTop: 10,
@@ -904,12 +913,12 @@ const styles = StyleSheet.create({
   stepPillText: { fontSize: 12, color: "#111827", fontWeight: "500" },
 
   quickStartCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#1E293B",
   },
   quickStartHeader: {
     flexDirection: "row",
@@ -917,74 +926,75 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 6,
   },
-  quickStartTitle: { fontSize: 14, fontWeight: "700", color: "#111827" },
-  quickStartDismiss: { fontSize: 12, fontWeight: "600", color: "#2563eb" },
-  quickStartText: { fontSize: 12, color: "#4b5563", lineHeight: 18 },
+  quickStartTitle: { fontSize: 14, fontWeight: "700", color: "#F9FAFB" },
+  quickStartDismiss: { fontSize: 12, fontWeight: "600", color: "#60A5FA" },
+  quickStartText: { fontSize: 12, color: "#94A3B8", lineHeight: 18 },
 
   errorBox: {
-    backgroundColor: "#fee2e2",
+    backgroundColor: "#450A0A",
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
   },
   errorTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#b91c1c",
+    color: "#FCA5A5",
     marginBottom: 2,
   },
-  errorText: { fontSize: 13, color: "#b91c1c" },
-  errorHint: { fontSize: 11, color: "#7f1d1d", marginTop: 4 },
+  errorText: { fontSize: 13, color: "#FCA5A5" },
+  errorHint: { fontSize: 11, color: "#F87171", marginTop: 4 },
 
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
   sectionTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: "#93C5FD",
     marginBottom: 4,
   },
-  sectionDescription: { fontSize: 13, color: "#6b7280", marginBottom: 8 },
+  sectionDescription: { fontSize: 13, color: "#CBD5E1", marginBottom: 8 },
 
   breadcrumbBar: {
     borderRadius: 10,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#0B1120",
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
-  breadcrumbLabel: { fontSize: 11, color: "#6b7280", marginBottom: 2 },
-  breadcrumbText: { fontSize: 12, color: "#111827" },
+  breadcrumbLabel: { fontSize: 11, color: "#CBD5E1", marginBottom: 2 },
+  breadcrumbText: { fontSize: 12, color: "#F1F5F9" },
 
   mainSectionTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: "#93C5FD",
     marginTop: 12,
     marginBottom: 6,
   },
 
   statsCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#1E293B",
     marginBottom: 8,
   },
-  statsText: { fontSize: 13, color: "#111827", fontWeight: "800" },
-  statsHint: { marginTop: 4, fontSize: 11, color: "#6b7280" },
+  statsText: { fontSize: 13, color: "#F1F5F9", fontWeight: "800" },
+  statsHint: { marginTop: 4, fontSize: 11, color: "#CBD5E1" },
 
-  recentHint: { fontSize: 11, color: "#6b7280", marginBottom: 8 },
+  recentHint: { fontSize: 11, color: "#94A3B8", marginBottom: 8 },
 
   undoBar: {
     marginTop: 10,
@@ -992,23 +1002,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#1E293B",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#334155",
   },
-  undoText: { fontSize: 13, color: "#374151" },
-  undoButtonText: { fontSize: 13, fontWeight: "700", color: "#2563eb" },
+  undoText: { fontSize: 13, color: "#E5E7EB" },
+  undoButtonText: { fontSize: 13, fontWeight: "700", color: "#60A5FA" },
 
   emptyStateCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#1E293B",
   },
-  emptyStateTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  emptyStateText: { marginTop: 6, fontSize: 13, color: "#6b7280" },
+  emptyStateTitle: { fontSize: 16, fontWeight: "800", color: "#93C5FD" },
+  emptyStateText: { marginTop: 6, fontSize: 13, color: "#CBD5E1" },
   emptyStateButtons: {
     marginTop: 12,
     flexDirection: "row",
@@ -1025,13 +1037,13 @@ const styles = StyleSheet.create({
   emptySecondaryBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
     paddingVertical: 10,
     borderRadius: 12,
     alignItems: "center",
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#0B1120",
   },
-  emptySecondaryText: { color: "#374151", fontWeight: "700", fontSize: 13 },
+  emptySecondaryText: { color: "#E5E7EB", fontWeight: "700", fontSize: 13 },
 
   toast: {
     position: "absolute",
@@ -1076,17 +1088,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#0B1120",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 16,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
   sheetHandle: {
     alignSelf: "center",
     width: 46,
     height: 5,
     borderRadius: 999,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#334155",
     marginBottom: 10,
   },
   sheetTitle: { fontSize: 16, fontWeight: "800", color: "#111827" },

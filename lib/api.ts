@@ -102,6 +102,7 @@ async function handleResponse(res: Response) {
 // ---------- AUTH ----------
 export async function signup(params: {
   fullName: string;
+  username: string;
   email: string;
   password: string;
 }) {
@@ -113,7 +114,7 @@ export async function signup(params: {
   return handleResponse(res);
 }
 
-export async function login(params: { email: string; password: string }) {
+export async function login(params: { username: string; password: string }) {
   const res = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -245,6 +246,53 @@ export type PublicUserProfile = {
 
 export async function getPublicUserProfile(token: string, userId: string): Promise<PublicUserProfile> {
   const res = await fetch(`${API_URL}/api/users/${userId}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return handleResponse(res);
+}
+
+// ---------- UPLOADS (Conversation files) ----------
+export async function uploadConversationFile(
+  token: string,
+  conversationId: string,
+  file: { uri: string; name: string; type?: string }
+) {
+  const fd = new FormData();
+
+  // For React Native / Expo: pass { uri, name, type }
+  // For web: `file` can be a real File object and appended directly.
+  if (typeof (file as any) === "object" && (file as any).uri) {
+    fd.append("file", (file as any));
+  } else {
+    fd.append("file", file as any);
+  }
+
+  const res = await fetch(`${API_URL}/api/chat/${conversationId}/files`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    } as Record<string,string>,
+    body: fd as unknown as BodyInit,
+  });
+
+  return handleResponse(res);
+}
+
+// ---------- USER RATINGS ----------
+export type UserRating = {
+  id: string;
+  score: number;
+  comment: string;
+  fromUser: {
+    id: string;
+    fullName: string;
+  };
+  createdAt: string;
+};
+
+export async function getUserRatings(token: string, userId: string): Promise<UserRating[]> {
+  const res = await fetch(`${API_URL}/api/ratings/user/${userId}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${token}` },
   });

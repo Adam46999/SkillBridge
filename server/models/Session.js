@@ -36,6 +36,7 @@ const SessionSchema = new mongoose.Schema(
 
     // ✅ cancellation meta
     cancelReason: { type: String, default: "", trim: true },
+    cancelMessage: { type: String, default: "", trim: true },
     cancelledBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -53,7 +54,7 @@ const SessionSchema = new mongoose.Schema(
     note: { type: String, default: "", trim: true },
 
     // legacy/simple rating (kept)
-    rating: { type: Number, min: 1, max: 5, default: null },
+    rating: { type: Number, min: 10, max: 50, default: null },
     feedback: { type: String, default: "", trim: true },
 
     // ---------------- Session Room additions (NEW) ----------------

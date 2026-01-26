@@ -67,7 +67,29 @@ export default function TimeField({
     if (!isValidPartialTime(normalized)) return;
 
     setLocal(normalized);
-    onChange(normalized);
+    // Don't call onChange yet, wait for blur to auto-format
+  };
+
+  const handleBlur = () => {
+    let formatted = local;
+
+    // Auto-format partial inputs when done editing
+    if (local && !local.includes(":")) {
+      // "21" → "21:00" or "9" → "09:00"
+      formatted = `${local.padStart(2, "0")}:00`;
+    } else if (local && local.endsWith(":")) {
+      // "20:" → "20:00"
+      formatted = `${local}00`;
+    } else if (local && local.includes(":")) {
+      const [hh, mm] = local.split(":");
+      // Pad hours and minutes
+      const paddedHH = hh.padStart(2, "0");
+      const paddedMM = mm ? mm.padEnd(2, "0") : "00";
+      formatted = `${paddedHH}:${paddedMM}`;
+    }
+
+    setLocal(formatted);
+    onChange(formatted);
   };
 
   return (
@@ -77,6 +99,7 @@ export default function TimeField({
       <TextInput
         value={local}
         onChangeText={onTextChange}
+        onBlur={handleBlur}
         placeholder={placeholder}
         editable={!disabled}
         keyboardType={Platform.select({

@@ -77,15 +77,12 @@ export default function SuggestedSkillsGrid({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
   headerRow: {
     flexDirection: "row",
@@ -96,24 +93,24 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: "#F9FAFB",
   },
   desc: {
     marginTop: 4,
     fontSize: 12,
-    color: "#6b7280",
+    color: "#94A3B8",
   },
   addAllBtn: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#0B1120",
   },
   addAllText: {
     fontSize: 12,
-    color: "#374151",
+    color: "#E5E7EB",
     fontWeight: "600",
   },
   wrap: {

@@ -28,6 +28,7 @@ type Props = {
   filterMode: FilterMode;
   onChangeFilter: (mode: FilterMode) => void;
   onLayoutCard?: (y: number) => void;
+  onEditLevel?: (skill: SkillToLearn) => void;
 };
 
 export const SkillsToLearnList: React.FC<Props> = ({
@@ -42,6 +43,7 @@ export const SkillsToLearnList: React.FC<Props> = ({
   filterMode,
   onChangeFilter,
   onLayoutCard,
+  onEditLevel,
 }) => {
   const getFilterIcon = (mode: FilterMode) => {
     if (mode === "all") return "✔";
@@ -122,6 +124,15 @@ export const SkillsToLearnList: React.FC<Props> = ({
                     <Text style={styles.favoriteText}>{fav ? "★" : "☆"}</Text>
                   </TouchableOpacity>
 
+                  {onEditLevel && (
+                    <TouchableOpacity
+                      onPress={() => onEditLevel(skill)}
+                      style={styles.editButton}
+                    >
+                      <Text style={styles.editIcon}>✏️</Text>
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity
                     onPress={() => onRemove(skill)} // ✅ FIX: remove by object
                     style={styles.removeButton}
@@ -146,15 +157,12 @@ export const SkillsToLearnList: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#020617",
     borderRadius: 16,
     padding: 16,
     marginTop: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: "#1E293B",
   },
   headerRow: {
     flexDirection: "row",
@@ -164,13 +172,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
+    color: "#F9FAFB",
     flex: 1,
   },
   countBadge: {
     fontSize: 12,
-    color: "#111827",
-    backgroundColor: "#e5e7eb",
+    color: "#E5E7EB",
+    backgroundColor: "#1E293B",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
@@ -185,8 +193,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#f9fafb",
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
   },
   filterChipActive: {
     backgroundColor: "#2563eb",
@@ -194,7 +202,7 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     fontSize: 12,
-    color: "#374151",
+    color: "#E5E7EB",
   },
   filterChipTextActive: {
     color: "#ffffff",
@@ -203,17 +211,17 @@ const styles = StyleSheet.create({
   searchInput: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 13,
-    color: "#111827",
-    backgroundColor: "#f9fafb",
+    color: "#E5E7EB",
+    backgroundColor: "#0B1120",
     marginBottom: 10,
   },
   emptyText: {
     fontSize: 13,
-    color: "#6b7280",
+    color: "#94A3B8",
   },
   skillsWrap: {
     gap: 8,
@@ -241,9 +249,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: "#fee2e2",
+    backgroundColor: "#450A0A",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#7F1D1D",
   },
   removeIcon: {
     fontSize: 13,
@@ -255,10 +265,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#334155",
+    backgroundColor: "#0B1120",
   },
   clearAllText: {
     fontSize: 12,
-    color: "#374151",
+    color: "#E5E7EB",
   },
 });

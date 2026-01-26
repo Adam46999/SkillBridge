@@ -29,6 +29,7 @@ const SkillLearnSchema = new mongoose.Schema(
 const UserSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true },
+    username: { type: String, unique: true, sparse: true },
     email: { type: String, required: true, unique: true },
 
     // 🔐 Used for authentication (bcrypt)

@@ -1,6 +1,6 @@
 // app/mentor/[id].tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import { getOrCreateConversation } from "../../lib/chat/api";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -17,6 +17,8 @@ import {
   PublicUserProfile,
   SkillTeach,
   getPublicUserProfile,
+  UserRating,
+  getUserRatings,
 } from "../../lib/api";
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -116,6 +118,13 @@ function toMentorVM(p: PublicUserProfile): MentorVM {
 
 export default function MentorProfileScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerShown: false });
+    } catch {}
+  }, [navigation]);
   const params = useLocalSearchParams();
 
   const mentorIdRaw = params?.id;
@@ -127,6 +136,7 @@ export default function MentorProfileScreen() {
       : "";
 
   const [mentor, setMentor] = useState<MentorVM | null>(null);
+  const [ratings, setRatings] = useState<UserRating[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -143,12 +153,22 @@ export default function MentorProfileScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
       const profile = await getPublicUserProfile(token, mentorId);
       setMentor(toMentorVM(profile));
+      
+      // Load ratings
+      try {
+        const userRatings = await getUserRatings(token, mentorId);
+        setRatings(userRatings);
+      } catch (e) {
+        console.warn("Failed to load ratings:", e);
+        // Don't fail the whole page if ratings fail
+        setRatings([]);
+      }
     } catch (e: any) {
       setErrorText(e?.message || "Failed to load mentor profile.");
     } finally {
@@ -214,7 +234,7 @@ export default function MentorProfileScreen() {
         mentorId: mentor.id,
         mentorName: mentor.fullName,
       },
-    } as any);
+    });
   };
 
   const handleMessage = async () => {
@@ -223,7 +243,7 @@ export default function MentorProfileScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -237,7 +257,11 @@ export default function MentorProfileScreen() {
 
       router.push({
         pathname: "/(tabs)/chats/[conversationId]",
-        params: { conversationId },
+        params: { 
+          conversationId,
+          peerName: mentor.fullName,
+          peerId: mentor.id,
+        },
       });
     } catch (e: any) {
       console.warn("Open chat failed:", e?.message || e);
@@ -410,6 +434,43 @@ export default function MentorProfileScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ratings & Feedback</Text>
+          <Text style={styles.sectionSub}>
+            Recent ratings from learners ({ratings.length} total)
+          </Text>
+
+          {ratings.length > 0 ? (
+            <View style={styles.ratingsContainer}>
+              {ratings.map((rating) => (
+                <View key={rating.id} style={styles.ratingCard}>
+                  <View style={styles.ratingHeader}>
+                    <Text style={styles.ratingScore}>⭐ {rating.score} points</Text>
+                    <Text style={styles.ratingDate}>
+                      {new Date(rating.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text style={styles.ratingFrom}>
+                    From: {rating.fromUser.fullName}
+                  </Text>
+                  {rating.comment && (
+                    <Text style={styles.ratingComment}>
+                      "{rating.comment}"
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No ratings yet</Text>
+              <Text style={styles.emptyText}>
+                This mentor hasn't received any ratings from completed sessions yet.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Preferences</Text>
 
           <View style={styles.prefGrid}>
@@ -447,6 +508,12 @@ export default function MentorProfileScreen() {
     </View>
   );
 }
+
+export const options = {
+  title: "Mentor profile",
+  headerTitle: "Mentor profile",
+  headerShown: false,
+};
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#020617" },
@@ -599,6 +666,40 @@ const styles = StyleSheet.create({
   availRowBorder: { borderBottomWidth: 1, borderBottomColor: "#0B1120" },
   availDay: { color: "#E5E7EB", fontSize: 13, fontWeight: "700" },
   availTime: { color: "#9CA3AF", fontSize: 13, fontWeight: "600" },
+
+  ratingsContainer: { gap: 12 },
+  ratingCard: {
+    backgroundColor: "#0B1120",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#1E293B",
+    gap: 6,
+  },
+  ratingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  ratingScore: {
+    color: "#10B981",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  ratingDate: {
+    color: "#64748B",
+    fontSize: 11,
+  },
+  ratingFrom: {
+    color: "#94A3B8",
+    fontSize: 12,
+  },
+  ratingComment: {
+    color: "#E2E8F0",
+    fontSize: 13,
+    fontStyle: "italic",
+    marginTop: 4,
+  },
 
   prefGrid: { flexDirection: "row", gap: 10 },
   prefBox: {

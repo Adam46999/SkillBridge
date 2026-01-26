@@ -209,6 +209,8 @@ export function useManageSkillsToTeach() {
     return () => {
       isMounted = false;
     };
+    // intentionally run once on mount; trySyncPending is safe to call here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function persistSkills(next: SkillTeach[]) {
@@ -399,8 +401,10 @@ export function useManageSkillsToTeach() {
     [selectedCategoryId]
   );
 
-  const subCategories: SkillSubCategory[] =
-    selectedCategory?.subCategories ?? [];
+  const subCategories: SkillSubCategory[] = useMemo(
+    () => selectedCategory?.subCategories ?? [],
+    [selectedCategory]
+  );
 
   const selectedSubCategory: SkillSubCategory | undefined = useMemo(
     () => subCategories.find((s) => s.id === selectedSubCategoryId),

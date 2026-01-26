@@ -34,6 +34,10 @@ import {
   onPeerTyping,
   onPresenceUpdate,
   onReadReceipt,
+  onCallStarted,
+  onCallEnded,
+  onRing,
+  onReject,
   sendRealtimeMessage,
   unwatchPresence,
   watchPresence,
@@ -41,8 +45,10 @@ import {
 } from "../../../lib/chat/socket";
 
 import ChatHeader from "./(components)/ChatHeader";
+import { useGlobalCall } from "../../../lib/GlobalCallContext";
 import ChatInput from "./(components)/ChatInput";
 import MessagesList from "./(components)/MessagesList";
+import FileUploader, { FileUploaderHandle } from "./FileUploader";
 
 function toChatMessage(m: RealtimeMessage): ChatMessage {
   return {
@@ -63,10 +69,12 @@ function toTime(s: string) {
 
 export default function ConversationScreen() {
   const router = useRouter();
+  const { startCall: startGlobalCall } = useGlobalCall();
   const params = useLocalSearchParams<{
     conversationId?: string;
     peerName?: string;
     peerId?: string;
+    initialRingingFrom?: string;
   }>();
 
   const convId = String(params.conversationId || "").trim();
@@ -76,7 +84,9 @@ export default function ConversationScreen() {
   const mountedRef = useRef(true);
 
   const [meId, setMeId] = useState("");
+  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(true);
+  const fileUploaderRef = useRef<FileUploaderHandle>(null);
 
   const [items, setItems] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
@@ -134,15 +144,24 @@ export default function ConversationScreen() {
 
     const token = await AsyncStorage.getItem("token");
     if (!token) {
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
       return () => {};
     }
 
+    setToken(token);
     setLoading(true);
 
     const cleanupFns: ((() => void) | undefined)[] = [];
 
     try {
+      // if layout passed an initial ringing param, pre-open call UI
+        try {
+          const initFrom = String(params.initialRingingFrom || "").trim();
+          if (initFrom && peerId && String(initFrom) === String(peerId)) {
+            startGlobalCall({ peerId: initFrom, peerName, conversationId: convId, initialRingingFrom: initFrom });
+          }
+        } catch {}
+
       const me = await getMe(token);
       if (!mountedRef.current) return () => {};
 
@@ -232,6 +251,32 @@ export default function ConversationScreen() {
         })
       );
 
+      // WebRTC: SDP offers will be handled by CallControls directly (avoid duplicate handlers)
+
+      // also handle ring events (in case ring arrives before offer)
+      try {
+        const offR = onRing((p) => {
+          const from = String(p.fromUserId || "").trim();
+          if (!from) return;
+          if (peerId && from !== String(peerId)) return;
+          startGlobalCall({ peerId: from, peerName, conversationId: convId, initialRingingFrom: from });
+        });
+        cleanupFns.push(offR);
+      } catch {}
+
+      // also react to call-start from server (in case it's emitted)
+      try {
+        const offStart = onCallStarted((p) => {
+          const from = String(p.fromUserId || "").trim();
+          if (!from) return;
+          if (peerId && from !== String(peerId)) return;
+          startGlobalCall({ peerId: from, peerName, conversationId: convId, initialRingingFrom: undefined });
+        });
+        cleanupFns.push(offStart);
+      } catch {}
+
+      // Call end/reject are now handled by GlobalCallProvider's CallControls onClose
+
       void safeMarkRead(token);
 
       return () => {
@@ -244,7 +289,7 @@ export default function ConversationScreen() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [convId, peerId, router, safeMarkRead]);
+  }, [convId, peerId, router, safeMarkRead, params.initialRingingFrom]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -305,7 +350,7 @@ export default function ConversationScreen() {
 
     const token = await AsyncStorage.getItem("token");
     if (!token) {
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
       return;
     }
 
@@ -335,7 +380,7 @@ export default function ConversationScreen() {
 
   const openPeerProfile = useCallback(() => {
     if (!peerId) return;
-    router.push(`/mentor/${peerId}` as any);
+    router.push(`/mentor/${peerId}`);
   }, [peerId, router]);
 
   const requestSessionFromChat = useCallback(() => {
@@ -345,6 +390,22 @@ export default function ConversationScreen() {
       params: { mentorId: peerId, mentorName: peerName },
     });
   }, [peerId, peerName, router]);
+
+  const handleFileUpload = useCallback(() => {
+    fileUploaderRef.current?.triggerUpload?.();
+  }, []);
+
+  const handleFileUploaded = useCallback(() => {
+    // The socket will emit the new message, so we don't need to manually refresh
+    // But we can still trigger safeMarkRead if needed
+    if (token) {
+      void safeMarkRead(token);
+    }
+  }, [token, safeMarkRead]);
+
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
 
   if (loading) {
     return (
@@ -372,7 +433,7 @@ export default function ConversationScreen() {
     >
       <ChatHeader
         title={peerName}
-        onBack={() => router.back()}
+        onBack={handleBack}
         conn={conn}
         peerTyping={peerTyping}
         peerOnline={peerOnline}
@@ -381,6 +442,7 @@ export default function ConversationScreen() {
         onPressTitle={openPeerProfile}
         onPressAvatar={openPeerProfile}
         onRequestSession={requestSessionFromChat}
+        onStartCall={() => startGlobalCall({ peerId: peerId || '', peerName, conversationId: convId, initialRingingFrom: undefined })}
       />
 
       <MessagesList
@@ -398,7 +460,28 @@ export default function ConversationScreen() {
         sending={sending}
         onChange={setText}
         onSend={send}
+        onFileUpload={handleFileUpload}
       />
+
+      {/* Hidden FileUploader component */}
+      {token && convId && (
+        <View style={{ position: "absolute", width: 0, height: 0, opacity: 0 }}>
+          <FileUploader
+            ref={fileUploaderRef}
+            conversationId={convId}
+            token={token}
+            onUploaded={handleFileUploaded}
+          />
+        </View>
+      )}
+
+      {/* CallControls now rendered globally via GlobalCallProvider in _layout.tsx */}
     </KeyboardAvoidingView>
   );
 }
+
+export const options = {
+  title: "Conversation",
+  headerTitle: "Conversation",
+  headerShown: true,
+};

@@ -1,6 +1,6 @@
 // app/find-mentor.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useRouter, useNavigation } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -53,8 +53,15 @@ const MODES: { value: MatchingMode; label: string; hint: string }[] = [
 
 const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+export const options = {
+  title: "Find a mentor",
+  headerTitle: "Find a mentor",
+  headerShown: false,
+};
+
 export default function FindMentorScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
 
   const [user, setUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -80,7 +87,7 @@ export default function FindMentorScreen() {
 
         const token = await AsyncStorage.getItem("token");
         if (!token) {
-          router.replace("/(auth)/login" as any);
+          router.replace("/(auth)/login");
           return;
         }
 
@@ -147,7 +154,7 @@ export default function FindMentorScreen() {
 
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        router.replace("/(auth)/login" as any);
+        router.replace("/(auth)/login");
         return;
       }
 
@@ -173,16 +180,23 @@ export default function FindMentorScreen() {
 
   const handleBack = () => router.back();
 
+  // Ensure header shows a friendly title (overrides file-name title)
+  React.useEffect(() => {
+    try {
+      (navigation as any)?.setOptions?.({ headerTitle: "Find a mentor" });
+    } catch {}
+  }, [navigation]);
+
   // ✅ NEW: open mentor profile
   const openMentorProfile = (mentorId: string) => {
-    router.push({ pathname: "/mentor/[id]", params: { id: mentorId } } as any);
+    router.push({ pathname: "/mentor/[id]", params: { id: mentorId } });
   };
 
   // ✅ NEW: open chat directly
-  const openMentorChat = async (mentorId: string) => {
+  const openMentorChat = async (mentorId: string, mentorName: string) => {
     const token = await AsyncStorage.getItem("token");
     if (!token) {
-      router.replace("/(auth)/login" as any);
+      router.replace("/(auth)/login");
       return;
     }
 
@@ -196,7 +210,11 @@ export default function FindMentorScreen() {
 
     router.push({
       pathname: "/(tabs)/chats/[conversationId]",
-      params: { conversationId },
+      params: { 
+        conversationId,
+        peerName: mentorName,
+        peerId: mentorId,
+      },
     });
   };
 
@@ -209,7 +227,7 @@ export default function FindMentorScreen() {
         skill: m.mainMatchedSkill?.name,
         level: m.mainMatchedSkill?.level,
       },
-    } as any);
+    });
   };
 
   if (loadingUser && !user && !errorText) {
@@ -543,7 +561,7 @@ export default function FindMentorScreen() {
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.actionPrimary]}
                   activeOpacity={0.85}
-                  onPress={() => openMentorChat(m.mentorId)}
+                  onPress={() => openMentorChat(m.mentorId, m.fullName)}
                 >
                   <Text style={styles.actionPrimaryText}>Message</Text>
                 </TouchableOpacity>

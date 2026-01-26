@@ -176,7 +176,7 @@ export default function SessionsHeader({
 
   const handleFind = useCallback(() => {
     if (onFindMentor) return onFindMentor();
-    router.push("/find-mentor" as any);
+    router.push("/find-mentor");
   }, [onFindMentor, router]);
 
   return (
