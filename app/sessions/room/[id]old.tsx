@@ -49,6 +49,7 @@ async function getToken() {
 export default function SessionRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const sessionId = String(id || "").trim();
+console.log("ROOM PARAMS", { id, sessionId });
 
   const [token, setToken] = useState<string | null>(null);
 
@@ -71,7 +72,11 @@ export default function SessionRoomScreen() {
   async function loadAll(tk: string) {
     try {
       setLoading(true);
+      console.log("ROOM LOAD", { sessionId, API_URL });
+
       const s = await getSessionById(tk, sessionId);
+      console.log("ROOM GOT SESSION", { ok: !!s, _id: (s as any)?._id, status: (s as any)?.status });
+
       setSession(s);
 
       setChatLoading(true);
@@ -82,7 +87,15 @@ export default function SessionRoomScreen() {
       const fl = await listSessionFiles(tk, sessionId);
       setFiles(fl);
     } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Failed to load session room");
+console.log("ROOM ERROR", {
+  message: e?.message,
+  status: e?.status,
+  body: e?.body,
+});
+Alert.alert(
+  "Failed",
+  `${e?.message || "Failed"}\nstatus=${e?.status || "?"}\n${JSON.stringify(e?.body || {}, null, 2)}`
+);
     } finally {
       setLoading(false);
       setChatLoading(false);

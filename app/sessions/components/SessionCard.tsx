@@ -317,7 +317,7 @@ export default function SessionCard({
       // 1) حاول سجّل join بالسيرفر (اذا نافذة الجوين مسموحة)
       // لو فشل (too early / expired / already joined) ما بنوقف التجربة
       try {
-        await joinSession(token, sessionId);
+        //await joinSession(token, sessionId);
       } catch (e: any) {
         // ignore join errors here; room will still open
         console.log("JoinSession skipped:", e?.message);
